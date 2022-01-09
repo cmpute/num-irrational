@@ -2,12 +2,14 @@ use core::ops::{Add, Sub, Mul, Div, Neg};
 use num_traits::{FromPrimitive, ToPrimitive, PrimInt, RefNum, NumRef};
 use num_integer::{Integer, Roots, sqrt};
 use std::fmt;
-use crate::traits::FromSqrt;
+use crate::traits::{Irrational, FromSqrt};
 
 #[cfg(feature = "num-rational")]
 use num_rational::Ratio;
 #[cfg(feature = "num-bigint")]
 use num_bigint::BigInt;
+#[cfg(feature = "num-prime")]
+use num_prime::PrimeBuffer;
 
 /// A helper trait to define valid type that can be used for QuadraticSurd
 pub trait QuadraticSurdBase: Integer + NumRef + Clone + Roots {}
@@ -15,7 +17,7 @@ impl<T: Integer + NumRef + Clone + Roots> QuadraticSurdBase for T {}
 
 /// A type representation quadratic surd number (a + b*sqrt(r)) / c
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
-pub struct QuadraticSurd<T> {
+pub struct QuadraticSurd<T>{
     a: T,
     b: T, // zero when reduced if the surd is a rational number
     c: T, // positive when reduced
@@ -59,7 +61,6 @@ impl<T: QuadraticSurdBase> QuadraticSurd<T>
 where for<'r> &'r T: RefNum<T>
 {
     // TODO: it's possible to support r < 0, but special handling is needed. And then we can support from_complex and to_complex
-    // TODO: add method to reduce root r
 
     fn reduce(&mut self) {
         if self.c.is_zero() {
@@ -88,12 +89,64 @@ where for<'r> &'r T: RefNum<T>
         }
     }
 
+    /// Try to eliminate factors of root that is a squared number
+    /// parameter `factor` is a hint of the factor
+    #[cfg(not(feature = "num-prime"))]
+    fn reduce_root(&mut self, factor: Option<T>) {
+        if let Some(d) = factor {
+            let (quo, rem) = self.r.div_rem(&d);
+            if rem.is_zero() { // if d is actually a factor
+                let root = sqrt(d.clone());
+                if &root * &root == d { // if d is a square number
+                    let g = root.gcd(&self.a).gcd(&self.c);
+                    self.a = &self.a / &g;
+                    self.b = &self.b * root / &g;
+                    self.c = &self.c / g;
+                    self.r = quo;
+                }
+            }
+            debug_assert!(&self.r % &d == T::zero())
+        }
+    }
+
+    #[cfg(feature = "num-prime")]
+    fn reduce_root(&mut self, factor: Option<T>) {
+        let mut new_r = r.clone();
+        let mut leftout = T::one();
+
+        if let Some(d) = factor {
+            let (quo, rem) = self.r.div_rem(&d);
+            if rem.is_zero() { // if d is actually a factor
+                let root = sqrt(d.clone());
+                if &root * &root == d { // if d is a square number
+                    new_r = quo;
+                    leftout = root;
+                }
+            }
+        }
+
+        panic!("not implemented") // TODO: implement with unified factorization interface
+    }
+
     #[inline]
     pub fn new(a: T, b: T, c: T, r: T) -> Self {
         assert!(r > T::zero());
 
         let mut ret = QuadraticSurd::new_raw(a, b, c, r);
         ret.reduce();
+        ret
+    }
+
+    /// Returns a reduced copy of self.
+    ///
+    /// This method will try to eliminate common divisors between a, b, c and
+    /// also try to eliminate square factors of r.
+    ///
+    #[inline]
+    pub fn reduced(&self) -> Self {
+        let mut ret = self.clone();
+        ret.reduce();
+        ret.reduce_root(None);
         ret
     }
 
@@ -158,14 +211,14 @@ fn quadsurd_to_f64<T: Integer + ToPrimitive> (a: T, b: T, c: T, r: T) -> Option<
 #[cfg(feature = "num-rational")]
 impl<T: PrimInt> QuadraticSurd<T> {
     pub fn to_accurate_rational(&self) -> Ratio<T> {
-        Ratio::one() // TODO: implement
+        panic!("not implemented") // TODO: implement
     }
 }
 
 #[cfg(all(feature = "num-rational", feature = "num-bigint"))]
 impl QuadraticSurd<BigInt> {
-    pub fn to_accurate_rational(&self, iterations: u32) {
-        Ratio::one() // TODO: implement
+    pub fn to_accurate_rational(&self, iterations: u32) -> Ratio<BigInt> {
+        panic!("not implemented") // TODO: implement
     }
 }
 
@@ -226,16 +279,50 @@ where for<'r> &'r T: RefNum<T> {
     }
 }
 
-// impl<T: QuadraticSurdBase> Mul<QuadraticSurd<T>> for QuadraticSurd<T>
-// where for<'r> &'r T: RefNum<T> {
-//     type Output = QuadraticSurd<T>;
-//     #[inline]
-//     fn mul(self, rhs: QuadraticSurd<T>) -> QuadraticSurd<T> {
-//         let gcd = self.c.gcd(&rhs);
-//         let rem = rhs / &gcd;
-//         QuadraticSurd::new(self.a * &rem, self.b * rem, self.c / gcd, self.r)
-//     }
-// }
+impl<T: QuadraticSurdBase> Mul<QuadraticSurd<T>> for QuadraticSurd<T>
+where for<'r> &'r T: RefNum<T> {
+    type Output = QuadraticSurd<T>;
+    #[inline]
+    fn mul(self, rhs: QuadraticSurd<T>) -> QuadraticSurd<T> {
+        if self.r != rhs.r {
+            panic!("The root base should be the same!");
+        }
+
+        let gcd_lr = (&self.a).gcd(&self.b).gcd(&rhs.c); // gcd between lhs numerator and rhs denominator
+        let gcd_rl = (&rhs.a).gcd(&rhs.b).gcd(&self.c); // gcd between rhs numerator and lhs denominator
+
+        let (la, lb, lc) = (&self.a / &gcd_lr, &self.b / &gcd_lr, &rhs.c / &gcd_rl);
+        let (ra, rb, rc) = (&rhs.a / &gcd_rl, &rhs.b / &gcd_rl, &self.c / &gcd_lr);
+        QuadraticSurd::new(
+            &la * &ra + &lb * &rb * self.r,
+            &la * &rb + &lb * &ra,
+            lc * rc, rhs.r)
+    }
+}
+
+impl<T: QuadraticSurdBase> Div<T> for QuadraticSurd<T>
+where for<'r> &'r T: RefNum<T> {
+    type Output = QuadraticSurd<T>;
+    #[inline]
+    fn div(self, rhs: T) -> QuadraticSurd<T> {
+        let gcd = self.a.gcd(&self.b).gcd(&rhs);
+        let rem = rhs / &gcd;
+        QuadraticSurd::new(self.a / &gcd, self.b / &gcd, self.c * rem, self.r)
+    }
+}
+
+impl<T: QuadraticSurdBase> Div<QuadraticSurd<T>> for QuadraticSurd<T>
+where for<'r> &'r T: RefNum<T> {
+    type Output = QuadraticSurd<T>;
+    #[inline]
+    fn div(self, rhs: QuadraticSurd<T>) -> QuadraticSurd<T> {
+        if self.r != rhs.r {
+            panic!("The root base should be the same!");
+        }
+
+        self.mul(rhs.into_recip())
+    }
+}
 
 impl<T: Integer> From<T> for QuadraticSurd<T>
 {
@@ -279,6 +366,9 @@ where for<'r> &'r T: RefNum<T> {
     }
 }
 
+impl<T: QuadraticSurdBase + ToPrimitive> Irrational for QuadraticSurd<T>
+where for<'r> &'r T: RefNum<T> {}
+
 impl<T: Integer + Roots + Clone> FromSqrt<T> for QuadraticSurd<T>
 where for<'r> &'r T: RefNum<T> {
     #[inline]
@@ -302,7 +392,8 @@ impl<T> FromSqrt<Ratio<T>> for QuadraticSurd<T> {
     }
 }
 
-// TODO: impl TryFromSqrt for Integer, QuadraticSurd and Rational
+// TODO: impl TryFromSqrt for Integer, QuadraticSurd and Rational.
+// Note that square root of a QuadraticSurd can be (but not always) a QuadraticSurd as well
 
 #[cfg(test)]
 mod tests {
