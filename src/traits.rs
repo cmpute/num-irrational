@@ -14,3 +14,12 @@ pub struct E {}
 pub struct Pi {}
 
 }
+
+pub trait FromSqrt<T> {
+    fn from_sqrt(t: T) -> Self;
+}
+
+pub trait TryFromSqrt<T> : Sized {
+    type Error;
+    fn try_from_sqrt(t: T) -> Result<Self, Self::Error>;
+}
