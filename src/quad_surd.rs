@@ -1,5 +1,5 @@
 use core::ops::{Add, Sub, Mul, Div, Neg};
-use num_traits::{FromPrimitive, ToPrimitive, PrimInt, RefNum, NumRef};
+use num_traits::{FromPrimitive, ToPrimitive, RefNum, NumRef, Signed};
 use num_integer::{Integer, Roots, sqrt};
 use std::fmt;
 use crate::traits::{Irrational, FromSqrt};
@@ -12,8 +12,8 @@ use num_bigint::BigInt;
 use num_prime::PrimeBuffer;
 
 /// A helper trait to define valid type that can be used for QuadraticSurd
-pub trait QuadraticSurdBase: Integer + NumRef + Clone + Roots {}
-impl<T: Integer + NumRef + Clone + Roots> QuadraticSurdBase for T {}
+pub trait QuadraticSurdBase: Integer + NumRef + Clone + Roots + Signed {}
+impl<T: Integer + NumRef + Clone + Roots + Signed> QuadraticSurdBase for T {}
 
 /// A type representation quadratic surd number (a + b*sqrt(r)) / c
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
@@ -83,9 +83,9 @@ where for<'r> &'r T: RefNum<T>
 
         // keep denom positive
         if self.c < T::zero() {
-            self.a = T::zero() - &self.a;
-            self.b = T::zero() - &self.b;
-            self.c = T::zero() - &self.c;
+            self.a = -self.a;
+            self.b = -self.b;
+            self.c = -self.c;
         }
     }
 
@@ -125,7 +125,7 @@ where for<'r> &'r T: RefNum<T>
             }
         }
 
-        panic!("not implemented") // TODO: implement with unified factorization interface
+        unimplemented!() // TODO: implement with unified factorization interface
     }
 
     #[inline]
@@ -160,7 +160,7 @@ where for<'r> &'r T: RefNum<T>
         let aa = &self.a * &self.a;
         let bb = &self.b * &self.b;
         QuadraticSurd::new(
-            T::zero() - &self.c * self.a,
+            -(&self.c * self.a),
             self.c * self.b,
             &bb * &self.r - aa,
             self.r
@@ -209,16 +209,9 @@ fn quadsurd_to_f64<T: Integer + ToPrimitive> (a: T, b: T, c: T, r: T) -> Option<
 }
 
 #[cfg(feature = "num-rational")]
-impl<T: PrimInt> QuadraticSurd<T> {
-    pub fn to_accurate_rational(&self) -> Ratio<T> {
-        panic!("not implemented") // TODO: implement
-    }
-}
-
-#[cfg(all(feature = "num-rational", feature = "num-bigint"))]
-impl QuadraticSurd<BigInt> {
-    pub fn to_accurate_rational(&self, iterations: u32) -> Ratio<BigInt> {
-        panic!("not implemented") // TODO: implement
+impl<T: Integer> RationalApproximation for QuadraticSurd<T> {
+    pub fn approx_rational(&self, limit: T) -> (bool, Ratio<T>) {
+        unimplemented!()
     }
 }
 
@@ -324,6 +317,15 @@ where for<'r> &'r T: RefNum<T> {
     }
 }
 
+impl<T: QuadraticSurdBase> Neg for QuadraticSurd<T>
+where for<'r> &'r T: RefNum<T> {
+    type Output = QuadraticSurd<T>;
+    #[inline]
+    fn neg(self) -> QuadraticSurd<T> {
+        QuadraticSurd::new_raw(-self.a, -self.b, self.c, self.r)
+    }
+}
+
 impl<T: Integer> From<T> for QuadraticSurd<T>
 {
     fn from(x: T) -> QuadraticSurd<T> {
@@ -369,31 +371,54 @@ where for<'r> &'r T: RefNum<T> {
 impl<T: QuadraticSurdBase + ToPrimitive> Irrational for QuadraticSurd<T>
 where for<'r> &'r T: RefNum<T> {}
 
+pub struct FromSqrtError {
+    kind: SqrtErrorKind
+}
+
+enum SqrtErrorKind {
+    Overflow,
+    Unrepresentable
+}
+
+
 impl<T: Integer + Roots + Clone> FromSqrt<T> for QuadraticSurd<T>
 where for<'r> &'r T: RefNum<T> {
+    type Err = FromSqrtError;
+
     #[inline]
-    fn from_sqrt(target: T) -> Self {
+    fn from_sqrt(target: T) -> Result<Self, Self::Err> {
         let root = sqrt(target.clone());
         if &root * &root == target {
-            Self::from_integer(root)
+            Ok(Self::from_integer(root))
         } else {
-            QuadraticSurd {
+            Ok(QuadraticSurd {
                 a: T::zero(), b: T::one(), c: T::one(), r: target
-            }
+            })
         }
     }
 }
 
 #[cfg(feature = "num-rational")]
 impl<T> FromSqrt<Ratio<T>> for QuadraticSurd<T> {
+    type Err = FromSqrtError;
+
     #[inline]
-    fn from_sqrt(target: Ratio<T>) -> Self {
-        QuadraticSurd::from_integer(target.numer) / QuadraticSurd::from_integer(target.denom)
+    fn from_sqrt(target: Ratio<T>) -> Result<Self, Self::Err> {
+        // TODO: check overflow
+        QuadraticSurd::new(T::zero(), T::one(),
+            target.denom() * target.denom(), target.numer() * target.denom())
     }
 }
 
-// TODO: impl TryFromSqrt for Integer, QuadraticSurd and Rational.
-// Note that square root of a QuadraticSurd can be (but not always) a QuadraticSurd as well
+impl<T: QuadraticSurdBase> FromSqrt<QuadraticSurd<T>> for QuadraticSurd<T>
+where for<'r> &'r T: RefNum<T> {
+    type Err = FromSqrtError;
+
+    #[inline]
+    fn from_sqrt(target: QuadraticSurd<T>) -> Result<Self, Self::Err> {
+        unimplemented!() // TODO: implement
+    }
+}
 
 #[cfg(test)]
 mod tests {
