@@ -1,10 +1,9 @@
 use core::ops::{Add, Sub, Mul, Div, Neg};
-use num_traits::{FromPrimitive, ToPrimitive, RefNum, NumRef, Signed};
+use num_traits::{FromPrimitive, ToPrimitive, RefNum, NumRef, Signed, Zero, One, CheckedMul};
 use num_integer::{Integer, Roots, sqrt};
 use std::fmt;
-use crate::traits::{Irrational, FromSqrt};
+use crate::traits::{Irrational, FromSqrt, Approximation, RationalApproximation};
 
-#[cfg(feature = "num-rational")]
 use num_rational::Ratio;
 #[cfg(feature = "num-bigint")]
 use num_bigint::BigInt;
@@ -16,7 +15,7 @@ pub trait QuadraticSurdBase: Integer + NumRef + Clone + Roots + Signed {}
 impl<T: Integer + NumRef + Clone + Roots + Signed> QuadraticSurdBase for T {}
 
 /// A type representation quadratic surd number (a + b*sqrt(r)) / c
-#[derive(PartialEq, Eq, Hash, Clone, Debug)]
+#[derive(PartialEq, Eq, Hash, Clone, Debug, Copy)]
 pub struct QuadraticSurd<T>{
     a: T,
     b: T, // zero when reduced if the surd is a rational number
@@ -26,41 +25,61 @@ pub struct QuadraticSurd<T>{
 
 impl<T> QuadraticSurd<T> {
     #[inline]
-    pub const fn new_raw(a: T, b: T, c: T, r: T) -> QuadraticSurd<T> {
+    pub(crate) const fn new_raw(a: T, b: T, c: T, r: T) -> Self {
         QuadraticSurd { a, b, c, r }
     }
 }
 
 impl<T: Integer> QuadraticSurd<T> {
+    #[inline]
+    pub fn is_integer(&self) -> bool {
+        self.c.is_one() && self.b.is_zero()
+    }
+
+    #[inline]
+    pub fn is_rational(&self) -> bool {
+        self.b.is_zero() || self.r.is_zero()
+    }
+
+    #[inline]
+    // TODO: disable this if complex is not supported. rather, panic in the creation
+    // of the surd
+    fn panic_if_complex(&self) {
+        if self.r < T::zero() {
+            panic!("it's a complex number!");
+        }
+    }
+}
+
+impl<T: Integer> From<T> for QuadraticSurd<T> {
     /// Create a `QuadraticSurd` representation of an integer.
     /// The square root base will be zero.
     #[inline]
-    pub fn from_integer(target: T) -> Self {
+    fn from(t: T) -> Self {
         QuadraticSurd {
-            a: target, b: T::zero(), c: T::one(), r: T::zero()
+            a: t, b: T::zero(), c: T::one(), r: T::zero()
         }
     }
+}
 
+impl<T: Integer> From<Ratio<T>> for QuadraticSurd<T> {
     /// Create a `QuadraticSurd` representation of a rational number.
     /// The square root base will be zero.
     #[inline]
-    #[cfg(feature = "num-rational")]
-    pub fn from_rational(target: Ratio<T>) -> Self {
+    fn from(t: Ratio<T>) -> Self {
+        let (a, c) = t.into();
         QuadraticSurd {
-            a: target.numer(), b: T::zero(), c: target.denom(), r: T::zero()
+            a, b: T::zero(), c, r: T::zero()
         }
-    }
-
-    #[inline]
-    pub fn is_integer(&self) -> bool {
-        self.c.is_one() && self.r.is_zero()
     }
 }
 
 impl<T: QuadraticSurdBase> QuadraticSurd<T>
 where for<'r> &'r T: RefNum<T>
 {
-    // TODO: it's possible to support r < 0, but special handling is needed. And then we can support from_complex and to_complex
+    // TODO: it's possible to support r < 0, but special handling is needed.
+    //       And then we can support from_complex, to_complex, is_complex
+    //       maybe enable this only if num-complex is enabled
 
     fn reduce(&mut self) {
         if self.c.is_zero() {
@@ -83,9 +102,9 @@ where for<'r> &'r T: RefNum<T>
 
         // keep denom positive
         if self.c < T::zero() {
-            self.a = -self.a;
-            self.b = -self.b;
-            self.c = -self.c;
+            self.a = T::zero() - &self.a;
+            self.b = T::zero() - &self.b;
+            self.c = T::zero() - &self.c;
         }
     }
 
@@ -168,29 +187,41 @@ where for<'r> &'r T: RefNum<T>
     }
 
     pub fn trunc(&self) -> Self {
+        self.panic_if_complex();
+
         let br = sqrt(&self.b * &self.b * &self.r);
         let num = if self.b >= T::zero() { &self.a + br } else { &self.a - br };
-        return Self::from_integer(num / &self.c);
+        return Self::from(num / &self.c);
     }
 
     pub fn fract(&self) -> Self {
+        self.panic_if_complex();
+
         return self.clone() - self.trunc()
     }
 
     /// Converts to an integer, rounding towards zero
     #[inline]
-    pub fn to_integer(&self) -> T {
-        if self.is_integer() { self.a.clone() } else { self.trunc().a }
+    pub fn to_integer(&self) -> Approximation<T> {
+        self.panic_if_complex();
+
+        if self.is_integer() {
+            Approximation::Exact(self.a.clone())
+        } else {
+            Approximation::Approximated(self.trunc().a)
+        }
     }
 
     /// Converts to a rational, rounding square root towards zero
     #[inline]
-    #[cfg(feature = "num-rational")]
-    pub fn to_rational(&self) -> Ratio<T> {
+    pub fn to_rational(&self) -> Approximation<Ratio<T>> {
+        self.panic_if_complex();
+
         if self.r.is_zero() {
-            Ratio::new_raw(self.a, self.c)
+            Approximation::Exact(Ratio::new_raw(self.a.clone(), self.c.clone()))
         } else {
-            Ratio::new_raw(self.a + sqrt(&self.b * &self.b * &self.r), self.c)
+            Approximation::Approximated(Ratio::new_raw(
+                &self.a + sqrt(&self.b * &self.b * &self.r), self.c.clone()))
         }
     }
 
@@ -200,7 +231,7 @@ where for<'r> &'r T: RefNum<T>
         let br = sqrt(&self.b * &self.b * &self.r);
         let num = if self.b >= T::zero() { &self.a + br } else { &self.a - br - T::one() };
         let num = if num >= T::zero() { num } else {num - &self.c + T::one()};
-        return Self::from_integer(num / &self.c);
+        return Self::from(num / &self.c);
     }
 }
 
@@ -208,9 +239,8 @@ fn quadsurd_to_f64<T: Integer + ToPrimitive> (a: T, b: T, c: T, r: T) -> Option<
     Some((a.to_f64()? + b.to_f64()? * r.to_f64()?.sqrt()) / c.to_f64()?)
 }
 
-#[cfg(feature = "num-rational")]
-impl<T: Integer> RationalApproximation for QuadraticSurd<T> {
-    pub fn approx_rational(&self, limit: T) -> (bool, Ratio<T>) {
+impl<T: Integer> RationalApproximation<T> for QuadraticSurd<T> {
+    fn approx_rational(&self, limit: T) -> Approximation<Ratio<T>> {
         unimplemented!()
     }
 }
@@ -326,22 +356,39 @@ where for<'r> &'r T: RefNum<T> {
     }
 }
 
-impl<T: Integer> From<T> for QuadraticSurd<T>
-{
-    fn from(x: T) -> QuadraticSurd<T> {
-        QuadraticSurd::from_integer(x)
+impl<T: QuadraticSurdBase> Zero for QuadraticSurd<T>
+where for<'r> &'r T: RefNum<T> {
+    #[inline]
+    fn zero() -> Self {
+        QuadraticSurd { a: T::zero(), b: T::zero(), c: T::one(), r: T::zero() }
+    }
+    #[inline]
+    fn is_zero(&self) -> bool {
+        self.a.is_zero() && self.b.is_zero()
+    }
+}
+
+impl<T: QuadraticSurdBase> One for QuadraticSurd<T>
+where for<'r> &'r T: RefNum<T> {
+    #[inline]
+    fn one() -> Self {
+        QuadraticSurd { a: T::one(), b: T::zero(), c: T::one(), r: T::zero() }
+    }
+    #[inline]
+    fn is_one(&self) -> bool {
+        self.a.is_one() && self.b.is_zero() && !self.c.is_zero()
     }
 }
 
 impl<T: Integer + FromPrimitive> FromPrimitive for QuadraticSurd<T> {
     #[inline]
     fn from_i64(n: i64) -> Option<Self> {
-        T::from_i64(n).map(Self::from_integer)
+        T::from_i64(n).map(Self::from)
     }
 
     #[inline]
     fn from_u64(n: u64) -> Option<Self> {
-        T::from_u64(n).map(Self::from_integer)
+        T::from_u64(n).map(Self::from)
     }
 
     #[inline]
@@ -354,16 +401,25 @@ impl<T: QuadraticSurdBase + ToPrimitive> ToPrimitive for QuadraticSurd<T>
 where for<'r> &'r T: RefNum<T> {
     #[inline]
     fn to_i64(&self) -> Option<i64> {
-        self.to_integer().to_i64()
+        if self.r < T::zero() { return None; }
+        match self.to_integer() {
+            Approximation::Exact(v) => v.to_i64(),
+            Approximation::Approximated(_) => None
+        }
     }
 
     #[inline]
     fn to_u64(&self) -> Option<u64> {
-        self.to_integer().to_u64()
+        if self.r < T::zero() { return None; }
+        match self.to_integer() {
+            Approximation::Exact(v) => v.to_u64(),
+            Approximation::Approximated(_) => None
+        }
     }
 
     #[inline]
     fn to_f64(&self) -> Option<f64> {
+        if self.r < T::zero() { return None; }
         quadsurd_to_f64(self.a.to_i64()?, self.b.to_i64()?, self.c.to_i64()?, self.r.to_i64()?)
     }
 }
@@ -371,25 +427,26 @@ where for<'r> &'r T: RefNum<T> {
 impl<T: QuadraticSurdBase + ToPrimitive> Irrational for QuadraticSurd<T>
 where for<'r> &'r T: RefNum<T> {}
 
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct FromSqrtError {
     kind: SqrtErrorKind
 }
 
+#[derive(Copy, Clone, Debug, PartialEq)]
 enum SqrtErrorKind {
     Overflow,
     Unrepresentable
 }
 
-
-impl<T: Integer + Roots + Clone> FromSqrt<T> for QuadraticSurd<T>
+impl<T: QuadraticSurdBase> FromSqrt<T> for QuadraticSurd<T>
 where for<'r> &'r T: RefNum<T> {
-    type Err = FromSqrtError;
+    type Error = FromSqrtError;
 
     #[inline]
-    fn from_sqrt(target: T) -> Result<Self, Self::Err> {
+    fn from_sqrt(target: T) -> Result<Self, Self::Error> {
         let root = sqrt(target.clone());
         if &root * &root == target {
-            Ok(Self::from_integer(root))
+            Ok(Self::from(root))
         } else {
             Ok(QuadraticSurd {
                 a: T::zero(), b: T::one(), c: T::one(), r: target
@@ -398,25 +455,67 @@ where for<'r> &'r T: RefNum<T> {
     }
 }
 
-#[cfg(feature = "num-rational")]
-impl<T> FromSqrt<Ratio<T>> for QuadraticSurd<T> {
-    type Err = FromSqrtError;
+impl<T: QuadraticSurdBase + CheckedMul> FromSqrt<Ratio<T>> for QuadraticSurd<T>
+where for<'r> &'r T: RefNum<T> {
+    type Error = FromSqrtError;
 
     #[inline]
-    fn from_sqrt(target: Ratio<T>) -> Result<Self, Self::Err> {
-        // TODO: check overflow
-        QuadraticSurd::new(T::zero(), T::one(),
-            target.denom() * target.denom(), target.numer() * target.denom())
+    fn from_sqrt(target: Ratio<T>) -> Result<Self, Self::Error> {
+        if target.is_integer() {
+            return Self::from_sqrt(target.to_integer());
+        }
+
+        let dd = target.denom().checked_mul(target.denom());
+        let nd = target.numer().checked_mul(target.denom());
+        match (dd, nd) {
+            (Some(new_c), Some(new_r)) => Ok(
+                QuadraticSurd::new(T::zero(), T::one(), new_c, new_r)),
+            (_, _) => Err(FromSqrtError { kind: SqrtErrorKind::Overflow })
+        }
     }
 }
 
-impl<T: QuadraticSurdBase> FromSqrt<QuadraticSurd<T>> for QuadraticSurd<T>
+impl<T: QuadraticSurdBase + CheckedMul + std::fmt::Debug> FromSqrt<QuadraticSurd<T>> for QuadraticSurd<T>
 where for<'r> &'r T: RefNum<T> {
-    type Err = FromSqrtError;
+    type Error = FromSqrtError;
 
-    #[inline]
-    fn from_sqrt(target: QuadraticSurd<T>) -> Result<Self, Self::Err> {
-        unimplemented!() // TODO: implement
+    #[inline] 
+    fn from_sqrt(target: QuadraticSurd<T>) -> Result<Self, Self::Error> {
+        if target.is_rational() {
+            match target.to_rational() {
+                Approximation::Exact(v) => return Self::from_sqrt(v), _ => panic!()
+            };
+        }
+
+        // denote a_c = a/c, b_c = b/c
+        // suppose (a_c + b_c * sqrt(r))^2 = target = x + y * sqrt(r)
+        // let g = a_c/b_c, then g^2 - 2g(x/y) + r = 0
+        // result is available only if g is rational
+
+        let x = Ratio::new(target.a, target.c.clone());
+        let y = Ratio::new(target.b, target.c);
+        let x_y = x / &y;
+        let delta2 = &x_y * &x_y - &target.r;
+        if delta2.is_negative() {
+            return Err(FromSqrtError { kind: SqrtErrorKind::Unrepresentable });
+        } // TODO: if complex number is enabled, don't report error here
+        let sqrt_delta = Self::from_sqrt(delta2)?;
+        if !sqrt_delta.is_integer() {
+            return Err(FromSqrtError { kind: SqrtErrorKind::Unrepresentable });
+        }
+
+        let delta2 = match sqrt_delta.to_integer() {
+            Approximation::Exact(v) => v, _ => panic!()
+        };
+        let g = x_y - delta2; // XXX: shall we select another root x_y + delta2?
+        let two = T::one() + T::one();
+        let c2 = Ratio::from(two * g.numer() * g.denom()) / y;
+        debug_assert!(c2.is_integer());
+        let c = sqrt(c2.to_integer());
+        debug_assert!(&c * &c == c2.to_integer());
+
+        let (a, b) = g.into();
+        Ok(QuadraticSurd::new(a, b, c, target.r))
     }
 }
 
@@ -428,17 +527,18 @@ mod tests {
     pub const PHI_R: QuadraticSurd<i32> = QuadraticSurd::new_raw(-1, 1, 2, 5); // 0.618
     pub const N_PHI: QuadraticSurd<i32> = QuadraticSurd::new_raw(-1, -1, 2, 5); // -1.618
     pub const N_PHI_R: QuadraticSurd<i32> = QuadraticSurd::new_raw(1, -1, 2, 5); // -0.618
+    pub const PHI_SQ: QuadraticSurd<i32> = QuadraticSurd::new_raw(3, 1, 2, 5);
 
     #[test]
     fn conversion_test() {
-        assert_eq!(PHI.floor().to_integer(), 1);
-        assert_eq!(PHI_R.floor().to_integer(), 0);
-        assert_eq!(PHI.to_integer(), 1);
-        assert_eq!(PHI_R.to_integer(), 0);
-        assert_eq!(N_PHI.floor().to_integer(), -2);
-        assert_eq!(N_PHI_R.floor().to_integer(), -1);
-        assert_eq!(N_PHI.to_integer(), -1);
-        assert_eq!(N_PHI_R.to_integer(), 0);
+        assert_eq!(PHI.floor().to_i32(), Some(1));
+        assert_eq!(PHI_R.floor().to_i32(), Some(0));
+        assert_eq!(PHI.to_integer(), Approximation::Approximated(1));
+        assert_eq!(PHI_R.to_integer(), Approximation::Approximated(0));
+        assert_eq!(N_PHI.floor().to_i32(), Some(-2));
+        assert_eq!(N_PHI_R.floor().to_i32(), Some(-1));
+        assert_eq!(N_PHI.to_integer(), Approximation::Approximated(-1));
+        assert_eq!(N_PHI_R.to_integer(), Approximation::Approximated(0));
 
         assert!(matches!(PHI.to_f64(),     Some(v) if (v - 1.61803398874989f64).abs() < 1e-10));
         assert!(matches!(PHI_R.to_f64(),   Some(v) if (v - 0.61803398874989f64).abs() < 1e-10));
@@ -447,10 +547,44 @@ mod tests {
     }
 
     #[test]
+    fn from_sqrt_test() {
+        assert_eq!(QuadraticSurd::from_sqrt(5).unwrap(), QuadraticSurd::new_raw(0, 1, 1, 5));
+        assert!(matches!(QuadraticSurd::from_sqrt(PHI), Err(_)));
+        assert!(matches!(QuadraticSurd::from_sqrt(PHI*PHI), Ok(PHI)));
+    }
+
+    #[test]
     fn arithmic_test() {
-        assert_eq!((PHI + PHI_R).to_f64().unwrap(), 5f64.sqrt());
-        assert_eq!((N_PHI + N_PHI_R).to_f64().unwrap(), -(5f64.sqrt()));
-        assert_eq!((PHI + N_PHI).to_f64().unwrap(), 0f64);
-        assert_eq!((PHI + N_PHI_R).to_f64().unwrap(), 1f64);
+        let sq5 = QuadraticSurd::from_sqrt(5).unwrap();
+        assert_eq!(-sq5, QuadraticSurd::new_raw(0, -1, 1, 5));
+
+        // add
+        assert_eq!(PHI + PHI_R, sq5);
+        assert_eq!(N_PHI + N_PHI_R, -sq5);
+        assert!((PHI + N_PHI).is_zero());
+        assert!((PHI + N_PHI_R).is_one());
+
+        // sub
+        assert!((PHI - PHI).is_zero());
+        assert!((PHI - PHI_R).is_one());
+        assert!((N_PHI_R - N_PHI).is_one());
+        assert_eq!(PHI - N_PHI_R, sq5);
+        assert_eq!(N_PHI - PHI_R, -sq5);
+
+        // recip
+        assert_eq!(PHI.recip(), PHI_R);
+        assert_eq!(N_PHI.recip(), N_PHI_R);
+
+        // mul
+        assert!((PHI * PHI_R).is_one());
+        assert!((N_PHI * N_PHI_R).is_one());
+        assert_eq!(PHI * PHI, PHI_SQ);
+        assert_eq!(N_PHI * N_PHI, PHI_SQ);
+
+        // div
+        assert!((PHI / PHI).is_one());
+        assert!((N_PHI / N_PHI).is_one());
+        assert_eq!(PHI / PHI_R, PHI_SQ);
+        assert_eq!(N_PHI / N_PHI_R, PHI_SQ);
     }
 }
