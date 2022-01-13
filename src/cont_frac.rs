@@ -1,6 +1,7 @@
 use core::str::FromStr;
 use std::ops::{Add, AddAssign};
 use std::mem::swap;
+use std::fmt;
 use num_traits::{float::FloatCore, Num, NumRef, RefNum, Unsigned, CheckedAdd, CheckedMul};
 use num_integer::{Integer};
 use num_rational::Ratio;
@@ -23,6 +24,33 @@ pub struct ContinuedFraction<T> {
 
     /// Sign of the fraction 
     negative: bool
+}
+
+impl<T> ContinuedFraction<T> {
+    #[inline]
+    pub fn aperiodic_coeffs(&self) -> &[T] {
+        &self.a_coeffs[..]
+    }
+
+    #[inline]
+    pub fn periodic_coeffs(&self) -> &[T] {
+        &self.p_coeffs[..]
+    }
+
+    #[inline]
+    pub fn is_negative(&self) -> bool {
+        self.negative
+    }
+
+    #[inline]
+    pub fn is_rational(&self) -> bool {
+        self.p_coeffs.len() == 0
+    }
+
+    #[inline]
+    pub fn is_integer(&self) -> bool {
+        self.a_coeffs.len() == 1 && self.p_coeffs.len() == 0
+    }
 }
 
 pub struct Coefficients<'a, T> {
@@ -71,7 +99,8 @@ pub struct Convergents<'a, T> {
     pm1: T, // p_(k-1)
     pm2: T, // p_(k-2)
     qm1: T, // q_(k-1)
-    qm2: T  // q_(k-2)
+    qm2: T, // q_(k-2)
+    neg: bool
 }
 
 impl<'a, T: Integer + Clone + CheckedAdd + CheckedMul> Iterator for Convergents<'a, T> {
@@ -88,6 +117,7 @@ impl<'a, T: Integer + Clone + CheckedAdd + CheckedMul> Iterator for Convergents<
         swap(&mut self.qm2, &mut self.qm1); // self.qm2 = self.qm1
         self.pm1 = p.clone(); self.qm1 = q.clone();
 
+        // TODO: apply sign to the convergents
         Some(Ratio::new(p, q))
     }
 }
@@ -127,12 +157,27 @@ impl<T: Num> ContinuedFraction<T> {
             p_ref: &self.p_coeffs, p_iter: None
         }
     }
+}
 
+impl<T: Integer + Clone + CheckedAdd + CheckedMul> ContinuedFraction<T> {
     /// Returns an iterator of the convergents
     pub fn convergents(&self) -> Convergents<T> {
         Convergents {
             coeffs: self.coeffs(),
-            pm1: T::one(), pm2: T::zero(), qm1: T::zero(), qm2: T::one()
+            pm1: T::one(), pm2: T::zero(), qm1: T::zero(), qm2: T::one(),
+            neg: self.negative
+        }
+    }
+
+    #[inline]
+    /// This method returns the corresponding rational number if it's rational,
+    /// returns the expansion until the first repeating occurence
+    pub fn to_rational(&self) -> Approximation<Ratio<T>> {
+        if self.is_rational() {
+            Approximation::Exact(self.convergents().last().unwrap())
+        } else {
+            Approximation::Approximated(self.convergents().nth(
+                self.a_coeffs.len() + self.p_coeffs.len()).unwrap())
         }
     }
 }
@@ -158,11 +203,47 @@ impl<T: Integer + Clone + CheckedAdd + CheckedMul> RationalApproximation<T> for 
     }
 }
 
+impl<T: fmt::Display> fmt::Display for ContinuedFraction<T>
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.negative { write!(f, "-")?; }
+
+        write!(f, "[{}", self.a_coeffs.first().unwrap())?;
+        if self.a_coeffs.len() == 1 {
+            if self.p_coeffs.len() == 0 {
+                return write!(f, "]")
+            } else {
+                write!(f, "; ")?;
+            }
+        } else {
+            let mut aiter = self.a_coeffs.iter().skip(1);
+            write!(f, "; {}", aiter.next().unwrap())?;
+            while let Some(v) = aiter.next() {
+                write!(f, ", {}", v)?;
+            }
+            if self.p_coeffs.len() > 0 {
+                write!(f, ", ")?;
+            }
+        }
+
+        if self.p_coeffs.len() > 0 {
+            let mut piter = self.p_coeffs.iter();
+            write!(f, "({}", piter.next().unwrap())?;
+            while let Some(v) = piter.next() {
+                write!(f, ", {}", v)?;
+            }
+            write!(f, ")]")
+        } else {
+            write!(f, "]")
+        }
+    }
+}
+
 // For arithmetics on ContinuedFraction:
 // REF: http://inwap.com/pdp10/hbaker/hakmem/cf.html
 //      https://www.plover.com/~mjd/cftalk/
 //      http://www.idosi.org/aejsr/10(5)15/1.pdf
-// We could implement arithmetics on GeneralContinuedFraction
+// TODO: We could implement arithmetics on GeneralContinuedFraction
 
 impl<T> ContinuedFraction<T> {
     /// TODO: implement from_float, from_rational, from_quad_surd as TryFrom traits
@@ -178,10 +259,6 @@ impl<T> ContinuedFraction<T> {
     /// Convert the continued fraction to GeneralContinuedFraction
     /// TODO: change to Into/From traits, implement for each primitive type
     pub fn generalize(self) { // -> GeneralContinuedFraction<T, _, _> {
-        unimplemented!()
-    }
-
-    pub fn is_rational(self) -> bool {
         unimplemented!()
     }
 }
@@ -254,5 +331,13 @@ mod tests {
         assert_eq!(sq2.coeffs().take(5).map(|&v| v).collect::<Vec<_>>(), vec![1, 2, 2, 2, 2]);
         assert_eq!(sq2.convergents().take(5).collect::<Vec<_>>(),
             vec![Ratio::from(1), Ratio::new(3, 2), Ratio::new(7, 5), Ratio::new(17, 12), Ratio::new(41, 29)]);
+    }
+
+    #[test]
+    fn fmt_test() {
+       assert_eq!(format!("{}", ContinuedFraction::new(vec![1], vec![], false)), "[1]");
+       assert_eq!(format!("{}", ContinuedFraction::new(vec![1, 2, 3], vec![], false)), "[1; 2, 3]");
+       assert_eq!(format!("{}", ContinuedFraction::new(vec![1], vec![2], false)), "[1; (2)]");
+       assert_eq!(format!("{}", ContinuedFraction::new(vec![1, 2, 3], vec![3, 2], false)), "[1; 2, 3, (3, 2)]");
     }
 }

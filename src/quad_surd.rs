@@ -96,10 +96,20 @@ where for<'r> &'r T: RefNum<T>
         }
 
         // reduce common divisor
-        let g = self.a.gcd(&self.b).gcd(&self.c);
-        self.a = &self.a / &g;
-        self.b = &self.b / &g;
-        self.c = &self.c / g;
+        let mut g_ac = self.a.gcd(&self.c);
+        let g_acr = (&g_ac * &g_ac).gcd(&self.r); // test if squared factor of c can divide r
+        let groot = sqrt(g_acr.clone());
+        if &groot * &groot == g_acr {
+            self.r = &self.r / &g_acr;
+            self.a = &self.a / &groot;
+            self.c = &self.c / &groot;
+            g_ac = &g_ac / groot;
+        }
+
+        let g_abc = g_ac.gcd(&self.b);
+        self.a = &self.a / &g_abc;
+        self.b = &self.b / &g_abc;
+        self.c = &self.c / g_abc;
 
         // keep denom positive
         if self.c < T::zero() {
@@ -110,44 +120,35 @@ where for<'r> &'r T: RefNum<T>
     }
 
     /// Try to eliminate factors of root that is a squared number
-    /// parameter `factor` is a hint of the factor
     #[cfg(not(feature = "num-prime"))]
-    fn reduce_root(&mut self, factor: Option<T>) {
-        if let Some(d) = factor {
-            let (quo, rem) = self.r.div_rem(&d);
-            if rem.is_zero() { // if d is actually a factor
-                let root = sqrt(d.clone());
-                if &root * &root == d { // if d is a square number
-                    let g = root.gcd(&self.a).gcd(&self.c);
-                    self.a = &self.a / &g;
-                    self.b = &self.b * root / &g;
-                    self.c = &self.c / g;
-                    self.r = quo;
-                }
-            }
-            debug_assert!(&self.r % &d == T::zero())
-        }
-
-        // TODO: reduce by iteratively check square numbers
+    fn reduce_base(&mut self) {
+        unimplemented! () // TODO: reduce by iteratively check square numbers
     }
 
     #[cfg(feature = "num-prime")]
-    fn reduce_root(&mut self, factor: Option<T>) {
-        let mut new_r = r.clone();
-        let mut leftout = T::one();
+    fn reduce_base(&mut self, factor: Option<T>) {
+        unimplemented!() // TODO: implement with unified factorization interface
+    }
+    
+    fn reduce_base_hinted(self, hint: T) -> Self {
+        let hint = hint.abs();
+        if hint.is_zero() || hint.is_one() { return self; }
 
-        if let Some(d) = factor {
-            let (quo, rem) = self.r.div_rem(&d);
-            if rem.is_zero() { // if d is actually a factor
-                let root = sqrt(d.clone());
-                if &root * &root == d { // if d is a square number
-                    new_r = quo;
-                    leftout = root;
-                }
+        let (quo, rem) = self.r.div_rem(&hint);
+        if rem.is_zero() { // if hint is actually a factor
+            let root = sqrt(hint.clone());
+            if &root * &root == hint { // if hint is a square number
+                let g = root.gcd(&self.a).gcd(&self.c);
+                return QuadraticSurd::new_raw(
+                    self.a / &g,
+                    self.b * root / &g,
+                    self.c / g,
+                    quo
+                )
             }
         }
 
-        unimplemented!() // TODO: implement with unified factorization interface
+        self
     }
 
     #[inline]
@@ -199,10 +200,11 @@ where for<'r> &'r T: RefNum<T>
     /// also try to eliminate square factors of r.
     ///
     #[inline]
-    pub fn reduced(mut self) -> Self {
-        self.reduce();
-        self.reduce_root(None);
-        self
+    pub fn reduced(self) -> Self {
+        let mut result = self;
+        result.reduce();
+        result.reduce_base();
+        result
     }
 
     /// Returns the reciprocal of the surd
@@ -280,14 +282,57 @@ fn quadsurd_to_f64<T: Integer + ToPrimitive> (a: T, b: T, c: T, r: T) -> Option<
 }
 
 #[cfg(not(feature="num-complex"))]
-impl<T: Integer> From<ContinuedFraction<T>> for &QuadraticSurd<T> {
+impl<T: Integer + Clone + NumRef + CheckedAdd + CheckedMul, U: QuadraticSurdBase + From<T>> From<ContinuedFraction<T>> for QuadraticSurd<U>
+where for<'r> &'r T: RefNum<T>, for<'r> &'r U: RefNum<U> {
     fn from(s: ContinuedFraction<T>) -> Self {
-        unimplemented!()
+        // use convergent if it's a rational
+        if s.is_rational() {
+            let (n, d) = s.convergents().last().unwrap().into();
+            return Self::from(Ratio::new_raw(U::from(n), U::from(d)));
+        }
+
+        // for periodic fraction, assume periodic part x = (ax + b) / (cx + d)
+        let mut piter = s.periodic_coeffs().iter().rev();
+        let (mut a, mut b) = (T::zero(), T::one());
+        let (mut c, mut d) = (T::one(), piter.next().unwrap().clone());
+
+        while let Some(v) = piter.next() {
+            let new_c = v * &c + a;
+            let new_d = v * &d + b;
+            a = c; b = d; c = new_c; d = new_d;
+        }
+
+        let psurd = Self::from_root(
+            Ratio::from(U::from(c)),
+            Ratio::from(U::from(d) - U::from(a)),
+            Ratio::from(-U::from(b))
+        ).unwrap();
+
+        // apply the aperiodic part, assume again result = (ax + b) / (cx + d)
+        let surd = if s.aperiodic_coeffs().len() == 1 {
+            psurd
+        } else {
+            let mut aiter = s.aperiodic_coeffs().iter().skip(1).rev();
+            let (mut a, mut b) = (T::zero(), T::one());
+            let (mut c, mut d) = (T::one(), aiter.next().unwrap().clone());
+            
+            while let Some(v) = aiter.next() {
+                let new_c = v * &c + a;
+                let new_d = v * &d + b;
+                a = c; b = d; c = new_c; d = new_d;
+            }
+
+            (psurd.clone() * U::from(a) + U::from(b)) / (psurd * U::from(c) + U::from(d))
+        };
+        let surd = surd + U::from(s.aperiodic_coeffs().first().unwrap().clone());
+
+        // apply sign
+        if s.is_negative() { -surd } else { surd }
     }
 }
 
 #[cfg(not(feature="num-complex"))]
-impl<T: Integer> From<QuadraticSurd<T>> for &ContinuedFraction<T> {
+impl<T: Integer> From<QuadraticSurd<T>> for ContinuedFraction<T> {
     fn from(s: QuadraticSurd<T>) -> Self {
         // REF: http://www.numbertheory.org/courses/MP313/lectures/lecture17/page5.html
         unimplemented!()
@@ -295,7 +340,7 @@ impl<T: Integer> From<QuadraticSurd<T>> for &ContinuedFraction<T> {
 }
 
 #[cfg(feature="num-complex")]
-impl<T: Integer> TryFrom<QuadraticSurd<T>> for &ContinuedFraction<T> {
+impl<T: Integer> TryFrom<QuadraticSurd<T>> for ContinuedFraction<T> {
     fn try_from(s: QuadraticSurd<T>) -> Self {
         unimplemented!()
     }
@@ -314,6 +359,25 @@ impl<T: fmt::Display> fmt::Display for QuadraticSurd<T>
     }
 }
 
+// reduce root base for binary operation
+#[inline]
+fn reduce_bin_op<T: QuadraticSurdBase>(lhs: QuadraticSurd<T>, rhs: QuadraticSurd<T>) -> (QuadraticSurd<T>, QuadraticSurd<T>)
+where for<'r> &'r T: RefNum<T> {
+    let result = if lhs.r > rhs.r {
+        let hint = &lhs.r / &rhs.r;
+        (lhs.reduce_base_hinted(hint), rhs)
+    } else if rhs.r > lhs.r {
+        let hint = &rhs.r / &lhs.r;
+        (lhs, rhs.reduce_base_hinted(hint))
+    } else { (lhs, rhs) };
+
+    if result.0.r != result.1.r {
+        panic!("the root base should be the same!");
+    }
+
+    result
+}
+
 macro_rules! arith_impl {
     (impl $imp:ident, $method:ident) => {
         // Abstracts a/b `op` c/d = (a*lcm/b `op` c*lcm/d)/lcm where lcm = lcm(b,d)
@@ -321,19 +385,19 @@ macro_rules! arith_impl {
         where for<'r> &'r T: RefNum<T> {
             type Output = QuadraticSurd<T>;
             fn $method(self, rhs: QuadraticSurd<T>) -> QuadraticSurd<T> {
-                if self.r != rhs.r {
-                    panic!("The root base should be the same!");
-                }
-                if self.c == rhs.c {
-                    return QuadraticSurd::new(self.a.$method(rhs.a), self.b.$method(rhs.b), rhs.c, rhs.r);
+                let (lhs, rhs) = reduce_bin_op(self, rhs);
+
+                if lhs.c == rhs.c {
+                    return QuadraticSurd::new(
+                        lhs.a.$method(rhs.a), lhs.b.$method(rhs.b), rhs.c, rhs.r);
                 }
 
-                let lcm = self.c.lcm(&rhs.c);
-                let lhs_r = &lcm / self.c;
+                let lcm = lhs.c.lcm(&rhs.c);
+                let lhs_r = &lcm / lhs.c;
                 let rhs_r = &lcm / rhs.c;
                 QuadraticSurd::new(
-                    (self.a / &lhs_r).$method(rhs.a / &rhs_r),
-                    (self.b / &lhs_r).$method(rhs.b / &rhs_r),
+                    (lhs.a / &lhs_r).$method(rhs.a / &rhs_r),
+                    (lhs.b / &lhs_r).$method(rhs.b / &rhs_r),
                     lcm, rhs.r)
             }
         }
@@ -369,17 +433,15 @@ where for<'r> &'r T: RefNum<T> {
     type Output = QuadraticSurd<T>;
     #[inline]
     fn mul(self, rhs: QuadraticSurd<T>) -> QuadraticSurd<T> {
-        if self.r != rhs.r {
-            panic!("The root base should be the same!");
-        }
+        let (lhs, rhs) = reduce_bin_op(self, rhs);
 
-        let gcd_lr = (&self.a).gcd(&self.b).gcd(&rhs.c); // gcd between lhs numerator and rhs denominator
-        let gcd_rl = (&rhs.a).gcd(&rhs.b).gcd(&self.c); // gcd between rhs numerator and lhs denominator
+        let gcd_lr = (&lhs.a).gcd(&lhs.b).gcd(&rhs.c); // gcd between lhs numerator and rhs denominator
+        let gcd_rl = (&rhs.a).gcd(&rhs.b).gcd(&rhs.c); // gcd between rhs numerator and lhs denominator
 
-        let (la, lb, lc) = (&self.a / &gcd_lr, &self.b / &gcd_lr, &rhs.c / &gcd_rl);
-        let (ra, rb, rc) = (&rhs.a / &gcd_rl, &rhs.b / &gcd_rl, &self.c / &gcd_lr);
+        let (la, lb, lc) = (&lhs.a / &gcd_lr, &lhs.b / &gcd_lr, &rhs.c / &gcd_rl);
+        let (ra, rb, rc) = (&rhs.a / &gcd_rl, &rhs.b / &gcd_rl, &lhs.c / &gcd_lr);
         QuadraticSurd::new(
-            &la * &ra + &lb * &rb * self.r,
+            &la * &ra + &lb * &rb * lhs.r,
             &la * &rb + &lb * &ra,
             lc * rc, rhs.r)
     }
@@ -401,10 +463,6 @@ where for<'r> &'r T: RefNum<T> {
     type Output = QuadraticSurd<T>;
     #[inline]
     fn div(self, rhs: QuadraticSurd<T>) -> QuadraticSurd<T> {
-        if self.r != rhs.r {
-            panic!("The root base should be the same!");
-        }
-
         self.mul(rhs.recip())
     }
 }
@@ -591,6 +649,9 @@ mod tests {
     pub const N_PHI_R: QuadraticSurd<i32> = QuadraticSurd::new_raw(1, -1, 2, 5); // -0.618
     pub const PHI_SQ: QuadraticSurd<i32> = QuadraticSurd::new_raw(3, 1, 2, 5);
 
+    pub const PHI20: QuadraticSurd<i32> = QuadraticSurd::new_raw(2, 1, 4, 20); // non-reduced version of PHI
+    pub const PHI20_R: QuadraticSurd<i32> = QuadraticSurd::new_raw(-2, 1, 4, 20); // non-reduced version of PHI_R
+
     #[test]
     fn new_split_test() {
         assert_eq!(QuadraticSurd::new_split(Ratio::new(1, 2), Ratio::new(1, 2), Ratio::from(5)), PHI);
@@ -631,6 +692,8 @@ mod tests {
 
         // add
         assert_eq!(PHI + PHI_R, sq5);
+        assert_eq!(PHI20 + PHI_R, sq5);
+        assert_eq!(PHI + PHI20_R, sq5);
         assert_eq!(N_PHI + N_PHI_R, -sq5);
         assert!((PHI + N_PHI).is_zero());
         assert!((PHI + N_PHI_R).is_one());
@@ -661,5 +724,20 @@ mod tests {
         assert!((N_PHI / N_PHI).is_one());
         assert_eq!(PHI / PHI_R, PHI_SQ);
         assert_eq!(N_PHI / N_PHI_R, PHI_SQ);
+    }
+
+    #[test]
+    fn conversion_between_contfrac() {
+        let cf_sq2 = ContinuedFraction::new(vec![1], vec![2], false);
+        assert_eq!(QuadraticSurd::from(cf_sq2), QuadraticSurd::new(0, 1, 1, 2));
+        
+        let cf_n_sq2 = ContinuedFraction::new(vec![1], vec![2], true);
+        assert_eq!(QuadraticSurd::from(cf_n_sq2), QuadraticSurd::new(0, -1, 1, 2));
+
+        let cf_sq2_7 = ContinuedFraction::new(vec![0, 4], vec![1, 18, 1, 8], false);
+        assert_eq!(QuadraticSurd::from(cf_sq2_7), QuadraticSurd::new(0, 1, 7, 2));
+        
+        let cf_10_sq2_7 = ContinuedFraction::new(vec![1, 4], vec![2], false);
+        assert_eq!(QuadraticSurd::from(cf_10_sq2_7), QuadraticSurd::new(10, -1, 7, 2));
     }
 }
