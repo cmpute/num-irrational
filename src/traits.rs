@@ -34,7 +34,7 @@ pub enum Approximation<T> {
 // TODO: wait for https://github.com/rust-num/num-rational/issues/100
 pub trait RationalApproximation<T> {
     /// Return an approximated rational representation of the number
-    fn approx_rational(&self, limit: T) -> Approximation<Ratio<T>>;
+    fn approx_rational(self, limit: &T) -> Approximation<Ratio<T>>;
 }
 
 // TODO: implement the rational approximation for all irrational types

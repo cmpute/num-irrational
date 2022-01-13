@@ -1,8 +1,9 @@
 use core::ops::{Add, Sub, Mul, Div, Neg};
-use num_traits::{FromPrimitive, ToPrimitive, RefNum, NumRef, Signed, Zero, One, CheckedMul};
+use num_traits::{FromPrimitive, ToPrimitive, RefNum, NumRef, Signed, Zero, One, CheckedAdd, CheckedMul};
 use num_integer::{Integer, Roots, sqrt};
 use std::fmt;
 use crate::traits::{Irrational, FromSqrt, Approximation, RationalApproximation};
+use crate::cont_frac::ContinuedFraction;
 
 use num_rational::Ratio;
 #[cfg(feature = "num-bigint")]
@@ -126,6 +127,8 @@ where for<'r> &'r T: RefNum<T>
             }
             debug_assert!(&self.r % &d == T::zero())
         }
+
+        // TODO: reduce by iteratively check square numbers
     }
 
     #[cfg(feature = "num-prime")]
@@ -149,33 +152,62 @@ where for<'r> &'r T: RefNum<T>
 
     #[inline]
     pub fn new(a: T, b: T, c: T, r: T) -> Self {
-        assert!(r > T::zero());
+        assert!(r >= T::zero());
 
         let mut ret = QuadraticSurd::new_raw(a, b, c, r);
         ret.reduce();
         ret
     }
 
-    /// Returns a reduced copy of self.
+    /// Create a surd with format `a + b sqrt(r)` where a, b, r are rationals
+    #[inline]
+    pub fn new_split(a: Ratio<T>, b: Ratio<T>, r: Ratio<T>) -> Self {
+        assert!(!r.is_negative());
+
+        let surd_r = r.numer() * r.denom();
+        let new_b_denom = b.denom() * r.denom();
+        let surd_a = a.numer() * &new_b_denom;
+        let surd_b = b.numer() * a.denom();
+        let surd_c = a.denom() * new_b_denom;
+        let mut ret = QuadraticSurd::new_raw(surd_a, surd_b, surd_c, surd_r);
+        ret.reduce();
+        ret
+    }
+
+    /// Get the root of a quadratic equation `ax^2 + bx + c` with rational coefficients
+    /// This method only returns one of the root `(b + sqrt(b^2 - 4ac)) / 2a`, use `conjugate()` for the other root
+    #[inline]
+    pub fn from_root(a: Ratio<T>, b: Ratio<T>, c: Ratio<T>) -> Option<Self> {
+        // degraded cases
+        if a.is_zero() {
+            if b.is_zero() { return None }
+            return Some(Self::from(-c / b))
+        }
+
+        let two = T::one() + T::one();
+        let four = &two * &two;
+        let delta = &b * &b - Ratio::from(four) * &a * c;
+        if delta.is_negative() { return None } // TODO: skip this with complex number support
+
+        let aa = Ratio::from(two) * a;
+        Some(Self::new_split(-b * aa.recip(), aa.recip(), delta))
+    }
+
+    /// Returns a reduced version of self.
     ///
     /// This method will try to eliminate common divisors between a, b, c and
     /// also try to eliminate square factors of r.
     ///
     #[inline]
-    pub fn reduced(&self) -> Self {
-        let mut ret = self.clone();
-        ret.reduce();
-        ret.reduce_root(None);
-        ret
+    pub fn reduced(mut self) -> Self {
+        self.reduce();
+        self.reduce_root(None);
+        self
     }
 
     /// Returns the reciprocal of the surd
     #[inline]
-    pub fn recip(&self) -> Self {
-        self.clone().into_recip()
-    }
-
-    pub fn into_recip(self) -> Self {
+    pub fn recip(self) -> Self {
         let aa = &self.a * &self.a;
         let bb = &self.b * &self.b;
         QuadraticSurd::new(
@@ -184,6 +216,14 @@ where for<'r> &'r T: RefNum<T>
             &bb * &self.r - aa,
             self.r
         )
+    }
+
+    /// Return the conjugate of the surd, i.e. (a - b*sqrt(r)) / c
+    #[inline]
+    pub fn conjugate(self) -> Self {
+        QuadraticSurd {
+            a: self.a, b: -self.b, c: self.c, r: self.r
+        }
     }
 
     pub fn trunc(&self) -> Self {
@@ -239,11 +279,33 @@ fn quadsurd_to_f64<T: Integer + ToPrimitive> (a: T, b: T, c: T, r: T) -> Option<
     Some((a.to_f64()? + b.to_f64()? * r.to_f64()?.sqrt()) / c.to_f64()?)
 }
 
-impl<T: Integer> RationalApproximation<T> for QuadraticSurd<T> {
-    fn approx_rational(&self, limit: T) -> Approximation<Ratio<T>> {
+#[cfg(not(feature="num-complex"))]
+impl<T: Integer> From<ContinuedFraction<T>> for &QuadraticSurd<T> {
+    fn from(s: ContinuedFraction<T>) -> Self {
         unimplemented!()
     }
 }
+
+#[cfg(not(feature="num-complex"))]
+impl<T: Integer> From<QuadraticSurd<T>> for &ContinuedFraction<T> {
+    fn from(s: QuadraticSurd<T>) -> Self {
+        // REF: http://www.numbertheory.org/courses/MP313/lectures/lecture17/page5.html
+        unimplemented!()
+    }
+}
+
+#[cfg(feature="num-complex")]
+impl<T: Integer> TryFrom<QuadraticSurd<T>> for &ContinuedFraction<T> {
+    fn try_from(s: QuadraticSurd<T>) -> Self {
+        unimplemented!()
+    }
+}
+
+// impl<T: Integer + Clone + CheckedAdd + CheckedMul> RationalApproximation<T> for &QuadraticSurd<T> {
+//     fn approx_rational(self, limit: &T) -> Approximation<Ratio<T>> {
+//         ContinuedFraction::from(self).approx_rational(limit)
+//     }
+// }
 
 impl<T: fmt::Display> fmt::Display for QuadraticSurd<T>
 {
@@ -343,7 +405,7 @@ where for<'r> &'r T: RefNum<T> {
             panic!("The root base should be the same!");
         }
 
-        self.mul(rhs.into_recip())
+        self.mul(rhs.recip())
     }
 }
 
@@ -530,6 +592,12 @@ mod tests {
     pub const PHI_SQ: QuadraticSurd<i32> = QuadraticSurd::new_raw(3, 1, 2, 5);
 
     #[test]
+    fn new_split_test() {
+        assert_eq!(QuadraticSurd::new_split(Ratio::new(1, 2), Ratio::new(1, 2), Ratio::from(5)), PHI);
+        assert_eq!(QuadraticSurd::new_split(Ratio::new(-1, 2), Ratio::new(1, 2), Ratio::from(5)), PHI_R);
+    }
+
+    #[test]
     fn conversion_test() {
         assert_eq!(PHI.floor().to_i32(), Some(1));
         assert_eq!(PHI_R.floor().to_i32(), Some(0));
@@ -547,10 +615,13 @@ mod tests {
     }
 
     #[test]
-    fn from_sqrt_test() {
+    fn from_xxx_test() {
         assert_eq!(QuadraticSurd::from_sqrt(5).unwrap(), QuadraticSurd::new_raw(0, 1, 1, 5));
         assert!(matches!(QuadraticSurd::from_sqrt(PHI), Err(_)));
         assert!(matches!(QuadraticSurd::from_sqrt(PHI*PHI), Ok(PHI)));
+
+        assert!(matches!(QuadraticSurd::from_root(
+            Ratio::from(1), Ratio::from(-1), Ratio::from(-1)), Some(PHI)));
     }
 
     #[test]
@@ -574,6 +645,10 @@ mod tests {
         // recip
         assert_eq!(PHI.recip(), PHI_R);
         assert_eq!(N_PHI.recip(), N_PHI_R);
+
+        // conjugate
+        assert_eq!(PHI.conjugate(), N_PHI_R);
+        assert_eq!(PHI_R.conjugate(), N_PHI);
 
         // mul
         assert!((PHI * PHI_R).is_one());
