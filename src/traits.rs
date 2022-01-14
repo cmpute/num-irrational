@@ -1,4 +1,4 @@
-use num_traits::ToPrimitive;
+use num_traits::{ToPrimitive, Signed, Unsigned};
 use num_rational::Ratio;
 
 #[cfg(feature = "num-bigint")]
@@ -42,12 +42,12 @@ pub trait RationalApproximation<T> {
 
 // TODO: implement the rational approximation for all irrational types
 
-pub trait WithSigned {
+pub trait WithSigned: Unsigned{
     type Signed;
     fn to_signed(self) -> Self::Signed;
 }
 
-pub trait WithUnsigned{
+pub trait WithUnsigned: Signed{
     type Unsigned;
     fn to_unsigned(self) -> Self::Unsigned;
 }

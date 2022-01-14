@@ -1,5 +1,4 @@
 use core::ops::{Add, Sub, Mul, Div, Neg};
-use std::convert::TryFrom;
 use num_traits::{FromPrimitive, ToPrimitive, RefNum, NumRef, Signed, Zero, One, CheckedAdd, CheckedMul};
 use num_integer::{Integer, Roots, sqrt};
 use std::fmt;
@@ -317,8 +316,7 @@ where for<'r> &'r T: RefNum<T>, for<'r> &'r U: RefNum<U> {
     fn from(s: ContinuedFraction<T>) -> Self {
         // use convergent if it's a rational
         if s.is_rational() {
-            let (n, d) = s.convergents().last().unwrap().into();
-            return Self::from(Ratio::new_raw(n.to_signed(), d.to_signed()));
+            return Self::from(s.convergents().last().unwrap());
         }
 
         // for periodic fraction, assume periodic part x = (ax + b) / (cx + d)

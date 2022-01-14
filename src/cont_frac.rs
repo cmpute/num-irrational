@@ -1,9 +1,8 @@
 use core::str::FromStr;
 use std::ops::{Add, AddAssign};
 use std::mem::swap;
-use std::convert::TryFrom;
 use std::fmt;
-use num_traits::{float::FloatCore, Num, NumRef, RefNum, Unsigned, CheckedAdd, CheckedMul};
+use num_traits::{float::FloatCore, Num, Signed, NumRef, RefNum, CheckedAdd, CheckedMul};
 use num_integer::{Integer};
 use num_rational::Ratio;
 use crate::traits::{RationalApproximation, Approximation, WithSigned};
@@ -101,26 +100,7 @@ pub struct Convergents<'a, T> {
     pm2: T, // p_(k-2)
     qm1: T, // q_(k-1)
     qm2: T, // q_(k-2)
-    neg: bool
-}
-
-impl<'a, T: Integer + Clone + CheckedAdd + CheckedMul> Iterator for Convergents<'a, T> {
-    type Item = Ratio<T>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let a = self.coeffs.next()?;
-        // p_k = a_k * p_(k-1) + p_(k-2)
-        let p = a.checked_mul(&self.pm1).and_then(|v| v.checked_add(&self.pm2))?;
-        // q_k = a_k * q_(k-1) + q_(k-2)
-        let q = a.checked_mul(&self.qm1).and_then(|v| v.checked_add(&self.qm2))?;
-
-        swap(&mut self.pm2, &mut self.pm1); // self.pm2 = self.pm1
-        swap(&mut self.qm2, &mut self.qm1); // self.qm2 = self.qm1
-        self.pm1 = p.clone(); self.qm1 = q.clone();
-
-        // TODO: apply sign to the convergents
-        Some(Ratio::new(p, q))
-    }
+    neg: bool // store the sign
 }
 
 impl<T: Num> ContinuedFraction<T> {
@@ -151,7 +131,7 @@ impl<T: Num> ContinuedFraction<T> {
     }
 
     /// Returns an iterator of the coefficients in the continued fraction
-    /// Note that the signed won't be in the coefficients
+    /// Note that for a negative number, the coefficients of it's absolute value is returned
     pub fn coeffs(&self) -> Coefficients<T> {
         Coefficients {
             a_iter: Some(self.a_coeffs.iter()),
@@ -160,7 +140,29 @@ impl<T: Num> ContinuedFraction<T> {
     }
 }
 
-impl<T: Integer + Clone + CheckedAdd + CheckedMul> ContinuedFraction<T> {
+impl<'a, T: Integer + Clone + CheckedAdd + CheckedMul + WithSigned<Signed = U>,
+         U: Integer + Clone + Signed>
+Iterator for Convergents<'a, T> {
+    type Item = Ratio<U>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let a = self.coeffs.next()?;
+        // p_k = a_k * p_(k-1) + p_(k-2)
+        let p = a.checked_mul(&self.pm1).and_then(|v| v.checked_add(&self.pm2))?;
+        // q_k = a_k * q_(k-1) + q_(k-2)
+        let q = a.checked_mul(&self.qm1).and_then(|v| v.checked_add(&self.qm2))?;
+
+        swap(&mut self.pm2, &mut self.pm1); // self.pm2 = self.pm1
+        swap(&mut self.qm2, &mut self.qm1); // self.qm2 = self.qm1
+        self.pm1 = p.clone(); self.qm1 = q.clone();
+
+        let r = Ratio::new(p.to_signed(), q.to_signed());
+        if self.neg { Some(-r) } else { Some(r) }
+    }
+}
+
+impl<T: Integer + Clone + CheckedAdd + CheckedMul + WithSigned<Signed = U>,
+     U: Integer + Clone + Signed> ContinuedFraction<T> {
     /// Returns an iterator of the convergents
     pub fn convergents(&self) -> Convergents<T> {
         Convergents {
@@ -173,7 +175,7 @@ impl<T: Integer + Clone + CheckedAdd + CheckedMul> ContinuedFraction<T> {
     #[inline]
     /// This method returns the corresponding rational number if it's rational,
     /// returns the expansion until the first repeating occurence
-    pub fn to_rational(&self) -> Approximation<Ratio<T>> {
+    pub fn to_rational(&self) -> Approximation<Ratio<U>> {
         if self.is_rational() {
             Approximation::Exact(self.convergents().last().unwrap())
         } else {
@@ -184,17 +186,14 @@ impl<T: Integer + Clone + CheckedAdd + CheckedMul> ContinuedFraction<T> {
 }
 
 impl<T: Integer + Clone + CheckedAdd + CheckedMul + WithSigned<Signed = U>,
-     U: Integer + Clone + CheckedAdd>
+     U: Integer + Clone + Signed + CheckedAdd>
 RationalApproximation<U> for ContinuedFraction<T>
 {
     fn approx_rational(&self, limit: &U) -> Approximation<Ratio<U>> {
         let within_limit = |v: &U| if v >= &U::zero() { v < limit } else { limit.checked_add(v).unwrap() >= U::zero() };
         let ratio_within_limit = |v: &Ratio<U>| within_limit(v.numer()) && within_limit(v.denom());
 
-        let mut convergents = self.convergents().map(|r| {
-            let (n, d) = r.into();
-            Ratio::new(n.to_signed(), d.to_signed())
-        });
+        let mut convergents = self.convergents();
         let mut last_conv = convergents.next().unwrap();
         if !ratio_within_limit(&last_conv) { 
             let i = self.a_coeffs.first().unwrap().clone();
@@ -330,14 +329,23 @@ mod tests {
 
     #[test]
     fn cont_frac_iter_test() {
-        let one = ContinuedFraction::new(vec![1], vec![], false);
+        let one = ContinuedFraction::<u32>::new(vec![1], vec![], false);
         assert_eq!(one.coeffs().map(|&v| v).collect::<Vec<_>>(), vec![1]);
         assert_eq!(one.convergents().collect::<Vec<_>>(), vec![Ratio::from(1)]);
 
-        let sq2 = ContinuedFraction::new(vec![1], vec![2], false);
+        let n_one = ContinuedFraction::<u32>::new(vec![1], vec![], true);
+        assert_eq!(n_one.coeffs().map(|&v| v).collect::<Vec<_>>(), vec![1]);
+        assert_eq!(n_one.convergents().collect::<Vec<_>>(), vec![Ratio::from(-1)]);
+
+        let sq2 = ContinuedFraction::<u32>::new(vec![1], vec![2], false);
         assert_eq!(sq2.coeffs().take(5).map(|&v| v).collect::<Vec<_>>(), vec![1, 2, 2, 2, 2]);
         assert_eq!(sq2.convergents().take(5).collect::<Vec<_>>(),
             vec![Ratio::from(1), Ratio::new(3, 2), Ratio::new(7, 5), Ratio::new(17, 12), Ratio::new(41, 29)]);
+
+        let n_sq2 = ContinuedFraction::<u32>::new(vec![1], vec![2], true);
+        assert_eq!(n_sq2.coeffs().take(5).map(|&v| v).collect::<Vec<_>>(), vec![1, 2, 2, 2, 2]);
+        assert_eq!(n_sq2.convergents().take(5).collect::<Vec<_>>(),
+            vec![Ratio::from(-1), Ratio::new(-3, 2), Ratio::new(-7, 5), Ratio::new(-17, 12), Ratio::new(-41, 29)]);
     }
 
     #[test]
