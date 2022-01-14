@@ -8,15 +8,7 @@ use num_bigint::{BigInt, BigUint};
 pub trait Irrational : ToPrimitive {}
 
 // TODO: add Num trait to Irrational
-// TODO: impl Irrational for Root<T> wher T: Integer
-
-/// This module contains several predefined irrational math constants
-pub mod symbols {
-
-pub struct E {}
-pub struct Pi {}
-
-}
+// TODO: impl Irrational for QuadraticSurd and ContinuedFraction
 
 /// In case there are multiple solution for square root,
 /// only canonical result will be returned 
@@ -34,6 +26,7 @@ pub enum Approximation<T> {
 
 // note: we could also have FloatApproximation,
 //       but it's only useful when we have a BigFloat type
+// TODO: implement limit as the limit of denominator
 // TODO: wait for https://github.com/rust-num/num-rational/issues/100
 pub trait RationalApproximation<T> {
     /// Return an approximated rational representation of the number

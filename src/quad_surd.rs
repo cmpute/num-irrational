@@ -378,7 +378,8 @@ where for<'r> &'r T: RefNum<T> {
     // find the reduced form and aperiodic coefficients
     let mut a_coeffs: Vec<U> = Vec::new();
     let rd = d.sqrt();
-    while !(q > T::zero() && p > T::zero() && p <= rd && rd < (&p+&q) && (&q-&p) <= rd) {
+    while a_coeffs.len() == 0 || // ensure that we have a first coefficient
+          !(p <= rd && rd < (&p+&q) && (&q-&p) <= rd) {
         let a = (&rd + &p).div_floor(&q);
         p = &a*&q - p;
         q = (&d - &p*&p) / q;
@@ -823,6 +824,10 @@ mod tests {
 
     #[test]
     fn conversion_between_contfrac() {
+        let cf_phi = ContinuedFraction::<u32>::new(vec![1], vec![1], false);
+        assert_eq!(QuadraticSurd::from(cf_phi.clone()), PHI);
+        assert_eq!(ContinuedFraction::from(PHI), cf_phi);
+
         let cf_sq2 = ContinuedFraction::<u32>::new(vec![1], vec![2], false);
         let surd_sq2 = QuadraticSurd::new(0, 1, 1, 2);
         assert_eq!(QuadraticSurd::from(cf_sq2.clone()), surd_sq2);
