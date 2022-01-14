@@ -1,11 +1,12 @@
 use core::str::FromStr;
 use std::ops::{Add, AddAssign};
 use std::mem::swap;
+use std::convert::TryFrom;
 use std::fmt;
 use num_traits::{float::FloatCore, Num, NumRef, RefNum, Unsigned, CheckedAdd, CheckedMul};
 use num_integer::{Integer};
 use num_rational::Ratio;
-use crate::traits::{RationalApproximation, Approximation};
+use crate::traits::{RationalApproximation, Approximation, WithSigned};
 
 /// This struct represents a simple continued fraction a0 + 1/(a1 + 1/ (a2 + ...))
 /// Where a0, a1, a2 are positive integers
@@ -182,16 +183,22 @@ impl<T: Integer + Clone + CheckedAdd + CheckedMul> ContinuedFraction<T> {
     }
 }
 
-impl<T: Integer + Clone + CheckedAdd + CheckedMul> RationalApproximation<T> for &ContinuedFraction<T>
+impl<T: Integer + Clone + CheckedAdd + CheckedMul + WithSigned<Signed = U>,
+     U: Integer + Clone + CheckedAdd>
+RationalApproximation<U> for ContinuedFraction<T>
 {
-    fn approx_rational(self, limit: &T) -> Approximation<Ratio<T>> {
-        let within_limit = |v: &T| if v >= &T::zero() { v < limit } else { limit.checked_add(v).unwrap() >= T::zero() };
-        let ratio_within_limit = |v: &Ratio<T>| within_limit(v.numer()) && within_limit(v.denom());
+    fn approx_rational(&self, limit: &U) -> Approximation<Ratio<U>> {
+        let within_limit = |v: &U| if v >= &U::zero() { v < limit } else { limit.checked_add(v).unwrap() >= U::zero() };
+        let ratio_within_limit = |v: &Ratio<U>| within_limit(v.numer()) && within_limit(v.denom());
 
-        let mut convergents = self.convergents();
+        let mut convergents = self.convergents().map(|r| {
+            let (n, d) = r.into();
+            Ratio::new(n.to_signed(), d.to_signed())
+        });
         let mut last_conv = convergents.next().unwrap();
         if !ratio_within_limit(&last_conv) { 
-            return Approximation::Approximated(Ratio::from(self.a_coeffs.first().unwrap().clone()))
+            let i = self.a_coeffs.first().unwrap().clone();
+            return Approximation::Approximated(Ratio::from(i.to_signed()))
         }
         loop {
             last_conv = match convergents.next() {
