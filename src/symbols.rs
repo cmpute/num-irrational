@@ -12,7 +12,7 @@ impl E {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct ECoefficients<T> { i: T, m: u8 }
 
 impl<T: Num + NumRef + Clone> Iterator for ECoefficients<T> {
@@ -48,11 +48,5 @@ mod tests {
     fn cfrac_test() {
         let e = E {};
         assert_eq!(e.cfrac().take(10).collect::<Vec<u32>>(), vec![2u32,1,2,1,1,4,1,1,6,1]);
-
-        // let ee = InfiniteContinuedFraction { coeffs: e.cfrac(), negative: false };
-        // println!("{:?}", ee.homo(2, 0, 0, 1).coeffs.take(10).collect::<Vec<_>>());
-
-        let em3 = InfiniteContinuedFraction { coeffs: e.cfrac(), negative: false };
-        println!("{:?}", em3.homo(1, -3, 0, 1).coeffs.take(30).collect::<Vec<_>>());
     }
 }

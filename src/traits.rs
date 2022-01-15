@@ -35,12 +35,12 @@ pub trait RationalApproximation<T> {
 
 // TODO: implement the rational approximation for all irrational types
 
-pub trait WithSigned: Unsigned{
+pub trait WithSigned{
     type Signed;
     fn to_signed(self) -> Self::Signed;
 }
 
-pub trait WithUnsigned: Signed{
+pub trait WithUnsigned{
     type Unsigned;
     fn to_unsigned(self) -> Self::Unsigned;
 }
@@ -50,11 +50,23 @@ macro_rules! impl_primitive_sign {
     ($TSigned:ty, $TUnsigned:ty) => {
         impl WithSigned for $TUnsigned {
             type Signed = $TSigned;
+            #[inline]
             fn to_signed(self) -> Self::Signed { self as $TSigned }
+        }
+        impl WithSigned for $TSigned {
+            type Signed = $TSigned;
+            #[inline]
+            fn to_signed(self) -> Self { self }
         }
         impl WithUnsigned for $TSigned {
             type Unsigned = $TUnsigned;
+            #[inline]
             fn to_unsigned(self) -> Self::Unsigned { self as $TUnsigned }
+        }
+        impl WithUnsigned for $TUnsigned {
+            type Unsigned = $TUnsigned;
+            #[inline]
+            fn to_unsigned(self) -> Self { self }
         }
     };
 }
@@ -66,11 +78,27 @@ impl_primitive_sign!(i64, u64);
 #[cfg(feature = "num-bigint")]
 impl WithSigned for BigUint {
     type Signed = BigInt;
+    #[inline]
     fn to_signed(self) -> Self::Signed { BigUint::from(self) }
+}
+
+#[cfg(feature = "num-bigint")]
+impl WithUnsigned for BigUint {
+    type Unsigned = BigUint;
+    #[inline]
+    fn to_unsigned(self) -> Self { self }
 }
 
 #[cfg(feature = "num-bigint")]
 impl WithUnsigned for BigInt {
     type Unsigned = BigUint;
+    #[inline]
     fn to_unsigned(self) -> Self::Unsigned { self.data() }
+}
+
+#[cfg(feature = "num-bigint")]
+impl WithSigned for BigInt {
+    type Signed = BigInt;
+    #[inline]
+    fn to_signed(self) -> Self::Signed { self }
 }

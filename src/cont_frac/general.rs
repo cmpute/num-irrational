@@ -9,8 +9,7 @@ use super::simple::InfiniteContinuedFraction;
 /// as a_k while the second value as b_k.
 pub trait GeneralContinuedFraction : Iterator {
     fn convergents(self) -> GeneralConvergents<Self>;
-    fn simplify(self) -> Simplified<Self>;
-    // fn collect(self) -> ContinuedFraction, need to implement FromIterator
+    // fn simplify(self) -> InfiniteContinuedFraction<Simplified<Self>>;
     // fn approx_rational(self, limit) -> Ratio<T>, need to implement RationalApproximation
 }
 
@@ -19,7 +18,7 @@ pub struct GeneralConvergents<T: Iterator + ?Sized> {
     general_coeffs: T
 }
 
-pub struct Simplified<T: ?Sized> { // REF: https://github.com/MostAwesomeDude/continued/blob/master/continued.py#L56
+pub struct Simplified<T: ?Sized> { // TODO: https://github.com/MostAwesomeDude/continued/blob/master/continued.py#L56
     general_coeffs: T
 }
 
@@ -29,9 +28,9 @@ where T: Iterator<Item = (U, U)> {
         unimplemented!()
     }
 
-    fn simplify(self) -> Simplified<T> {
-        unimplemented!()
-    }
+    // fn simplify(self) -> Simplified<T> {
+    //     unimplemented!()
+    // }
 }
 
 // TODO: implement continued fraction for various functions
