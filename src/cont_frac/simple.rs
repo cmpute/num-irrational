@@ -146,9 +146,9 @@ Iterator for GeneralCoefficients<I> {
     fn next(&mut self) -> Option<Self::Item> {
         if self.negative {
             self.negative = false; // only apply to the first coefficient
-            self.coeffs.next().map(|v| (-v.clone().to_signed(), U::one()))
+            self.coeffs.next().map(|v| (U::one(), -v.clone().to_signed()))
         } else {
-            self.coeffs.next().map(|v| (v.clone().to_signed(), U::one()))
+            self.coeffs.next().map(|v| (U::one(), v.clone().to_signed()))
         }
     }
 }
@@ -535,7 +535,7 @@ pub struct HomographicResult<I: Iterator> {
     coeffs: I
 }
 
-impl<I: Iterator<Item = T>, T: Integer + Num + NumRef + Clone> Iterator for HomographicResult<I>
+impl<I: Iterator<Item = T>, T: Integer + Num + NumRef> Iterator for HomographicResult<I>
 where for <'r> &'r T: RefNum<T> {
     type Item = T;
 
@@ -547,6 +547,8 @@ where for <'r> &'r T: RefNum<T> {
                     let p = &v * &self.pm1 + &self.pm2;
                     let q = v * &self.qm1 + &self.qm2;
                     
+                    // FIXME: using div_mod_floor here could be used to optimize performance
+                    //        just like GeneralizedContinuedFraction::simplified
                     let i = if q.is_zero() { T::zero() } else { p.div_floor(&q) };
                     if !q.is_zero() && !self.qm1.is_zero() && i == self.pm1.div_floor(&self.qm1) {
                         let new_qm2 = &self.pm1 - &i * &self.qm1;
@@ -558,7 +560,7 @@ where for <'r> &'r T: RefNum<T> {
                     } else {
                         swap(&mut self.pm2, &mut self.pm1); // self.pm2 = self.pm1
                         swap(&mut self.qm2, &mut self.qm1); // self.qm2 = self.qm1
-                        self.pm1 = p.clone(); self.qm1 = q.clone();
+                        self.pm1 = p; self.qm1 = q;
                     }
                 },
                 None => break None
