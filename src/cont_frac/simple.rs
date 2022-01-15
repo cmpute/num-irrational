@@ -1,22 +1,16 @@
 use core::str::FromStr;
-use std::ops::{Add, AddAssign, Mul};
-use std::mem::swap;
+use std::ops::{Add, Mul};
 use std::fmt;
-use num_traits::{float::FloatCore, Num, One, Zero, Signed, NumRef, RefNum, CheckedAdd, CheckedMul};
+use num_traits::{Num, One, Zero, Signed, NumRef, RefNum, CheckedAdd, CheckedMul};
 use num_integer::{Integer};
 use num_rational::Ratio;
+use super::block::{Block, DualBlock};
 use crate::traits::{RationalApproximation, Approximation, WithSigned, WithUnsigned};
 use crate::quad_surd::{QuadraticSurd, QuadraticSurdBase};
 
-/// This struct represents a simple continued fraction a0 + 1/(a1 + 1/ (a2 + ...))
+/// This struct represents a simple continued fraction `a0 + 1/(a1 + 1/ (a2 + ...))`
 /// Where a0, a1, a2 are positive integers
 /// It's capable of representing rational numbers and quadratic surds
-/// 
-/// References:
-///     https://pi.math.cornell.edu/~gautam/ContinuedFractions.pdf
-///     https://crypto.stanford.edu/pbc/notes/contfrac/
-///     http://www.numbertheory.org/continued_fractions.html
-///     http://www.numbertheory.org/php/cfrac.html
 #[derive(Clone, Debug, PartialEq)]
 pub struct ContinuedFraction<T> {
     /// Coefficients of aperiodic part
@@ -154,11 +148,7 @@ Iterator for GeneralCoefficients<I> {
 }
 
 pub struct Convergents<'a, T> {
-    coeffs: Coefficients<'a, T>,
-    pm1: T, // p_(k-1)
-    pm2: T, // p_(k-2)
-    qm1: T, // q_(k-1)
-    qm2: T, // q_(k-2)
+    coeffs: Coefficients<'a, T>, block: Block<T>,
     neg: bool // store the sign
 }
 
@@ -169,14 +159,8 @@ Iterator for Convergents<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let a = self.coeffs.next()?;
-        // p_k = a_k * p_(k-1) + p_(k-2)
-        let p = a.checked_mul(&self.pm1).and_then(|v| v.checked_add(&self.pm2))?;
-        // q_k = a_k * q_(k-1) + q_(k-2)
-        let q = a.checked_mul(&self.qm1).and_then(|v| v.checked_add(&self.qm2))?;
-
-        swap(&mut self.pm2, &mut self.pm1); // self.pm2 = self.pm1
-        swap(&mut self.qm2, &mut self.qm1); // self.qm2 = self.qm1
-        self.pm1 = p.clone(); self.qm1 = q.clone();
+        let (p, q) = self.block.checked_rmove(a.clone())?;
+        self.block.update(p.clone(), q.clone());
 
         let r = Ratio::new(p.to_signed(), q.to_signed());
         if self.neg { Some(-r) } else { Some(r) }
@@ -241,8 +225,7 @@ impl<T: Integer + Clone + CheckedAdd + CheckedMul + WithSigned<Signed = U>,
     /// if all coefficients are consumed, or numeric overflow happened.
     pub fn convergents(&self) -> Convergents<T> {
         Convergents {
-            coeffs: self.coeffs(),
-            pm1: T::one(), pm2: T::zero(), qm1: T::zero(), qm2: T::one(),
+            coeffs: self.coeffs(), block: Block::identity(),
             neg: self.negative
         }
     }
@@ -396,16 +379,18 @@ where for <'r> &'r U: RefNum<U>{
     fn add(self, rhs: T) -> Self {
         let mut new_a = self.a_coeffs;
         let i = new_a.first().unwrap();
-        let (new_i, negative) = if self.negative {
+
+        // find if the signed is flipped after adding
+        let (new_i, flipped) = if self.negative {
             if rhs < T::zero() { // neg + neg
                 let rhs = (T::zero() - rhs).to_unsigned();
-                (rhs + i, true)
+                (rhs + i, false)
             } else { // neg + pos
                 let rhs = rhs.to_unsigned();
                 if *i < rhs {
-                    (rhs - i, false)
+                    (rhs - i, true)
                 } else {
-                    (i - rhs, true)
+                    (i - rhs, false)
                 }
             }
         } else {
@@ -420,11 +405,16 @@ where for <'r> &'r U: RefNum<U>{
                 (i + rhs.to_unsigned(), false)
             }
         };
-        *new_a.first_mut().unwrap() = new_i;
 
-        let mut result = ContinuedFraction { a_coeffs: new_a, p_coeffs: self.p_coeffs, negative };
-        if result.is_zero() { result.negative = false; } // clear negative flag for 0
-        result
+        if flipped {
+            unimplemented!() // TODO: use InfiniteContinuedFraction
+        } else {
+            *new_a.first_mut().unwrap() = new_i;
+    
+            let mut result = ContinuedFraction { a_coeffs: new_a, p_coeffs: self.p_coeffs, negative: self.negative };
+            if result.is_zero() { result.negative = false; } // clear negative flag for 0
+            result
+        }
     }
 }
 
@@ -491,14 +481,14 @@ impl<I: Iterator<Item = T> + Clone, T: Num + Clone> InfiniteContinuedFraction<I>
     }
 }
 
-impl<I: Iterator<Item = T>, T: Integer + Num + NumRef + Clone> InfiniteContinuedFraction<I>
+impl<I: Iterator<Item = T>, T: Integer + NumRef + Clone> InfiniteContinuedFraction<I>
 where for <'r> &'r T: RefNum<T> {
     /// This method returns a homographic function result on the fraction
     /// A homographic function is `(ax + b)/(cx + d)`
     pub fn homo(self, a: T, b: T, c: T, d: T)
-        -> InfiniteContinuedFraction<HomographicResult<I>> {
+        -> InfiniteContinuedFraction<HomographicResult<I, T>> {
         InfiniteContinuedFraction(
-            HomographicResult { pm1: a, pm2: b, qm1: c, qm2: d, coeffs: self.0 }
+            HomographicResult { block: Block::new(a, b, c, d), coeffs: self.0 }
         )
     }
 
@@ -510,16 +500,59 @@ where for <'r> &'r T: RefNum<T> {
         e: T, f: T, g: T, h: T)
         -> InfiniteContinuedFraction<BihomographicResult<I, U, T>> {
         InfiniteContinuedFraction(BihomographicResult {
-            pm11: a, pm12: b, pm21: c, pm22: d,
-            qm11: e, qm12: f, qm21: g, qm22: h,
-            x_coeffs: self.0, y_coeffs: rhs.0, down_first: false
+            block: DualBlock::new(a, b, c, d, e, f, g, h),
+            x_coeffs: self.0, y_coeffs: rhs.0,
         })
     }
 
     /// Take first N coefficients in the sequence and turn it into a
-    /// `ContinuedFraction` object.
-    pub fn take<U>(self, count: usize) -> ContinuedFraction<U> {
-        unimplemented!()
+    /// `ContinuedFraction` object. Note that this method only accept
+    /// the coefficients with same sign.
+    /// TODO: provide simplity method for InfiniteContinuedFraction to allow conversion to this form
+    pub fn take<U>(self, count: usize) -> ContinuedFraction<U>
+    where T: WithUnsigned<Unsigned = U> {
+        let mut it = self.0;
+        let mut coeffs = Vec::with_capacity(count);
+
+        // utility function to get abs value and signum
+        // signum is None when v is zero
+        let abs_signum = |v: T| {
+            if v < T::zero() {
+                ((T::zero() - v).to_unsigned(), Some(true))
+            } else {
+                let s = if v.is_zero() { None } else { Some(false) };
+                (v.to_unsigned(), s)
+            } 
+        };
+
+        // parse the first coeff
+        let (a1, mut signum) = if let Some(v) = it.next() {
+            abs_signum(v)
+        } else {
+            panic!("there should be at least one coefficient!")
+        };
+        coeffs.push(a1);
+
+        // collect the remaining coeffs
+        let mut count = count - 1;
+        while count > 0 {
+            match it.next() {
+                Some(v) => {
+                    let (a, new_signum) = abs_signum(v);
+                    match (signum, new_signum) {
+                        (Some(s), Some(ns)) => if s != ns { 
+                            panic!("all the coefficient should have the same sign");
+                        },
+                        (None, Some(ns)) => { signum = Some(ns); } // update sign
+                        (_, None) => {}
+                    };
+                    coeffs.push(a);
+                }, None => break
+            }
+            count -= 1;
+        }
+
+        ContinuedFraction { a_coeffs: coeffs, p_coeffs: Vec::new(), negative: signum.unwrap() }
     }
 
     /// Take first N coefficients in the sequence and turn it into a
@@ -530,37 +563,21 @@ where for <'r> &'r T: RefNum<T> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct HomographicResult<I: Iterator> {
-    pm1: I::Item, pm2: I::Item, qm1: I::Item, qm2: I::Item,
-    coeffs: I
+pub struct HomographicResult<I: Iterator<Item = T>, T> {
+    block: Block<T>, coeffs: I
 }
 
-impl<I: Iterator<Item = T>, T: Integer + Num + NumRef> Iterator for HomographicResult<I>
+impl<I: Iterator<Item = T>, T: Integer + NumRef> Iterator for HomographicResult<I, T>
 where for <'r> &'r T: RefNum<T> {
     type Item = T;
 
-    // use the magic table method described in https://crypto.stanford.edu/pbc/notes/contfrac/compute.html
     fn next(&mut self) -> Option<T> {
         loop {
             match self.coeffs.next() {
                 Some(v) => {
-                    let p = &v * &self.pm1 + &self.pm2;
-                    let q = v * &self.qm1 + &self.qm2;
-                    
-                    // FIXME: using div_mod_floor here could be used to optimize performance
-                    //        just like GeneralizedContinuedFraction::simplified
-                    let i = if q.is_zero() { T::zero() } else { p.div_floor(&q) };
-                    if !q.is_zero() && !self.qm1.is_zero() && i == self.pm1.div_floor(&self.qm1) {
-                        let new_qm2 = &self.pm1 - &i * &self.qm1;
-                        let new_qm1 = p - &i * &q;
-                        self.pm1 = q;
-                        swap(&mut self.pm2, &mut self.qm1); // self.pm2 = self.qm1
-                        self.qm1 = new_qm1; self.qm2 = new_qm2;
+                    let (p, q) = self.block.rmove(v);
+                    if let Some(i) = self.block.reduce_integer(p, q) {
                         break Some(i)
-                    } else {
-                        swap(&mut self.pm2, &mut self.pm1); // self.pm2 = self.pm1
-                        swap(&mut self.qm2, &mut self.qm1); // self.qm2 = self.qm1
-                        self.pm1 = p; self.qm1 = q;
                     }
                 },
                 None => break None
@@ -571,100 +588,45 @@ where for <'r> &'r T: RefNum<T> {
 
 #[derive(Debug, Clone, Copy)]
 pub struct BihomographicResult<X: Iterator<Item = T>, Y: Iterator<Item = T>, T> {
-    pm11: T, // p with a_(i-1), b_(j-1)
-    pm12: T, // p with a_(i-1), b_(j-2)
-    pm21: T, // ..
-    pm22: T, // ..
-    qm11: T, // q with a_(i-1), b_(j-1)
-    qm12: T, // q with a_(i-1), b_(j-2)
-    qm21: T, // ..
-    qm22: T, // ..
+    block: DualBlock<T>,
     x_coeffs: X, y_coeffs: Y,
-    down_first: bool, // used for letting the table move right and move down iteratively
 }
 
-impl<X: Iterator<Item = T>, Y: Iterator<Item = T>, T: Integer + Num + NumRef>
+impl<X: Iterator<Item = T>, Y: Iterator<Item = T>, T: Integer + NumRef>
 Iterator for BihomographicResult<X, Y, T>
 where for <'r> &'r T: RefNum<T> {
     type Item = T;
 
-    // use the magic table method described in https://crypto.stanford.edu/pbc/notes/contfrac/bihom.html
     fn next(&mut self) -> Option<T> {
         loop {
-            let i11 = if self.qm11.is_zero() { T::zero() } else { self.pm11.div_floor(&self.qm11) };
-            let i22 = if self.qm22.is_zero() { T::zero() } else { self.pm22.div_floor(&self.qm22) };
-            if !self.down_first && (self.qm11.is_zero() || self.qm12.is_zero() || self.qm22.is_zero()
-                || i11 != self.pm12.div_floor(&self.qm12) || i11 != i22) {
-
-                match self.x_coeffs.next() {
-                    Some(v) => {
-                        // move down first next time
-                        self.down_first = true;
-
-                        let p1 = &v * &self.pm11 + &self.pm21;
-                        let q1 = &v * &self.qm11 + &self.qm21;
-
-                        swap(&mut self.pm21, &mut self.pm11); // self.pm21 = self.pm11
-                        swap(&mut self.qm21, &mut self.qm11); // self.qm21 = self.qm11
-                        self.pm11 = p1; self.qm11 = q1;
-
-                        let p2 = &v * &self.pm12 + &self.pm22;
-                        let q2 = v * &self.qm12 + &self.qm22;
-
-                        swap(&mut self.pm22, &mut self.pm12); // self.pm22 = self.pm12
-                        swap(&mut self.qm22, &mut self.qm12); // self.qm22 = self.qm12
-                        self.pm12 = p2; self.qm12 = q2;
-                        continue
-                    },
-                    None => break None
+            match self.block.reduce_integer() {
+                Ok(i) => break Some(i),
+                Err((right, down)) => {
+                    if right {
+                        match self.x_coeffs.next() {
+                            Some(v) => {
+                                let (p1, q1, p2, q2) = self.block.rmove_right(v);
+                                self.block.update_right(p1, q1, p2, q2);
+                            }, None => break None
+                        }
+                    }
+                    if down {
+                        match self.y_coeffs.next() {
+                            Some(v) => {
+                                let (p1, q1, p2, q2) = self.block.rmove_down(v);
+                                self.block.update_down(p1, q1, p2, q2);
+                            }, None => break None
+                        }
+                    }
                 }
             }
-
-            self.down_first = false; // clear flag immediately after it takes effect
-
-            if self.qm11.is_zero() || self.qm21.is_zero() || self.qm12.is_zero()
-                || i11 != self.pm21.div_floor(&self.qm21) || i11 != i22 {
-
-                match self.y_coeffs.next() {
-                    Some(v) => {
-                        let p1 = &v * &self.pm11 + &self.pm12;
-                        let q1 = &v * &self.qm11 + &self.qm12;
-
-                        swap(&mut self.pm12, &mut self.pm11); // self.pm12 = self.pm11
-                        swap(&mut self.qm12, &mut self.qm11); // self.qm12 = self.qm11
-                        self.pm11 = p1; self.qm11 = q1;
-
-                        let p2 = &v * &self.pm21 + &self.pm22;
-                        let q2 = v * &self.qm21 + &self.qm22;
-
-                        swap(&mut self.pm22, &mut self.pm21); // self.pm22 = self.pm21
-                        swap(&mut self.qm22, &mut self.qm21); // self.qm22 = self.qm21
-                        self.pm21 = p2; self.qm21 = q2;
-                        continue
-                    },
-                    None => break None
-                }
-            }
-
-            // now all fractions floor to the same value
-            let i = i11;
-            let new_qm11 = &self.pm11 - &i * &self.qm11;
-            swap(&mut self.pm11, &mut self.qm11); self.qm11 = new_qm11;
-            let new_qm12 = &self.pm12 - &i * &self.qm12;
-            swap(&mut self.pm12, &mut self.qm12); self.qm12 = new_qm12;
-            let new_qm21 = &self.pm21 - &i * &self.qm21;
-            swap(&mut self.pm21, &mut self.qm21); self.qm21 = new_qm21;
-            let new_qm22 = &self.pm22 - &i * &self.qm22;
-            swap(&mut self.pm22, &mut self.qm22); self.qm22 = new_qm22;
-
-            break Some(i)
         }
     }
 }
 
-impl<I: Iterator<Item = T>, T: Integer + Num + NumRef + Clone> Add<T> for InfiniteContinuedFraction<I>
+impl<I: Iterator<Item = T>, T: Integer + NumRef + Clone> Add<T> for InfiniteContinuedFraction<I>
 where for <'r> &'r T: RefNum<T> {
-    type Output = InfiniteContinuedFraction<HomographicResult<I>>;
+    type Output = InfiniteContinuedFraction<HomographicResult<I, T>>;
 
     fn add(self, rhs: T) -> Self::Output {
         self.homo(T::one(), rhs, T::zero(), T::one())
@@ -755,5 +717,13 @@ mod tests {
         let sq2 = ContinuedFraction::<u32>::new(vec![1], vec![2], false);
         let sq2p1 = sq2.clone() + 1;
         assert_eq!((sq2.expanded() + 1).0.take(5).collect::<Vec<_>>(), sq2p1.expanded().0.take(5).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn inf_cont_frac_utility_test() {
+        let e = E {};
+        let e_cf = InfiniteContinuedFraction(e.cfrac::<i32>());
+        assert_eq!((e_cf + (-2)).take(5), ContinuedFraction::new(vec![0,1,2,1,1], vec![], false));
+        assert_eq!((e_cf + (-3)).take(5), ContinuedFraction::new(vec![0,3,1,1,4], vec![], true));
     }
 }
