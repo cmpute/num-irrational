@@ -1,4 +1,3 @@
-use num_traits::{ToPrimitive, Signed, Unsigned};
 use num_rational::Ratio;
 
 #[cfg(feature = "num-bigint")]

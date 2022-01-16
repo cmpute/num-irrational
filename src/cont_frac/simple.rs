@@ -248,7 +248,6 @@ impl<T: Integer + Clone + CheckedAdd + CheckedMul + WithSigned<Signed = U>,
 Computable<U> for ContinuedFraction<T>
 {
     fn approximated(&self, limit: &U) -> Approximation<Ratio<U>> {
-
         let mut convergents = self.convergents();
         let mut last_conv = convergents.next().unwrap();
         if last_conv.denom() > limit { 
@@ -571,14 +570,12 @@ where for <'r> &'r T: RefNum<T> {
 
     fn next(&mut self) -> Option<T> {
         loop {
-            match self.coeffs.next() {
-                Some(v) => {
-                    let (p, q) = self.block.rmove(v);
-                    if let Some(i) = self.block.reduce_integer(p, q) {
-                        break Some(i)
-                    }
-                },
-                None => break None
+            match self.block.reduce_recip() {
+                Some(i) => break Some(i),
+                None => match self.coeffs.next() {
+                    Some(v) => self.block.rmove(v),
+                    None => break None
+                }
             }
         }
     }
@@ -597,23 +594,19 @@ where for <'r> &'r T: RefNum<T> {
 
     fn next(&mut self) -> Option<T> {
         loop {
-            match self.block.reduce_integer() {
+            match self.block.reduce_recip() {
                 Ok(i) => break Some(i),
                 Err((right, down)) => {
                     if right {
                         match self.x_coeffs.next() {
-                            Some(v) => {
-                                let (p1, q1, p2, q2) = self.block.rmove_right(v);
-                                self.block.update_right(p1, q1, p2, q2);
-                            }, None => break None
+                            Some(v) => self.block.rmove_right(v),
+                            None => break None
                         }
                     }
                     if down {
                         match self.y_coeffs.next() {
-                            Some(v) => {
-                                let (p1, q1, p2, q2) = self.block.rmove_down(v);
-                                self.block.update_down(p1, q1, p2, q2);
-                            }, None => break None
+                            Some(v) => self.block.rmove_down(v),
+                            None => break None
                         }
                     }
                 }
