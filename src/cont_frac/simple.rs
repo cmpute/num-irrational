@@ -5,7 +5,7 @@ use num_traits::{Num, One, Zero, Signed, NumRef, RefNum, CheckedAdd, CheckedMul}
 use num_integer::{Integer};
 use num_rational::Ratio;
 use super::block::{Block, DualBlock};
-use crate::traits::{RationalApproximation, Approximation, WithSigned, WithUnsigned};
+use crate::traits::{Computable, Approximation, WithSigned, WithUnsigned};
 use crate::quad_surd::{QuadraticSurd, QuadraticSurdBase};
 
 /// This struct represents a simple continued fraction `a0 + 1/(a1 + 1/ (a2 + ...))`
@@ -245,21 +245,19 @@ impl<T: Integer + Clone + CheckedAdd + CheckedMul + WithSigned<Signed = U>,
 
 impl<T: Integer + Clone + CheckedAdd + CheckedMul + WithSigned<Signed = U>,
      U: Integer + Clone + Signed + CheckedAdd>
-RationalApproximation<U> for ContinuedFraction<T>
+Computable<U> for ContinuedFraction<T>
 {
-    fn approx_rational(&self, limit: &U) -> Approximation<Ratio<U>> {
-        let within_limit = |v: &U| if v >= &U::zero() { v < limit } else { limit.checked_add(v).unwrap() >= U::zero() };
-        let ratio_within_limit = |v: &Ratio<U>| within_limit(v.numer()) && within_limit(v.denom());
+    fn approximated(&self, limit: &U) -> Approximation<Ratio<U>> {
 
         let mut convergents = self.convergents();
         let mut last_conv = convergents.next().unwrap();
-        if !ratio_within_limit(&last_conv) { 
+        if last_conv.denom() > limit { 
             let i = self.a_coeffs.first().unwrap().clone();
             return Approximation::Approximated(Ratio::from(i.to_signed()))
         }
         loop {
             last_conv = match convergents.next() {
-                Some(v) => if ratio_within_limit(&v) { v }
+                Some(v) => if v.denom() < limit { v }
                            else { return Approximation::Approximated(last_conv); },
                 None => return Approximation::Exact(last_conv)
             }
@@ -410,7 +408,7 @@ where for <'r> &'r U: RefNum<U>{
             unimplemented!() // TODO: use InfiniteContinuedFraction
         } else {
             *new_a.first_mut().unwrap() = new_i;
-    
+
             let mut result = ContinuedFraction { a_coeffs: new_a, p_coeffs: self.p_coeffs, negative: self.negative };
             if result.is_zero() { result.negative = false; } // clear negative flag for 0
             result
@@ -633,6 +631,23 @@ where for <'r> &'r T: RefNum<T> {
     }
 }
 
+// TODO: implement sqrt for InfiniteContinuedFraction
+// REF: https://crypto.stanford.edu/pbc/notes/contfrac/algebraic.html
+//      https://github.com/blynn/frac/blob/master/newton.c#L74
+
+/// This trait provide conversion from iterator of ASCII chars to
+/// continued fraction. This can be used for accepting high-precision
+/// decimal, or infinite continued fraction representation
+pub trait ParseContinuedFraction {
+    // TODO: implement followings
+    // fn parse_as_decimals() -> InfiniteContinuedFraction;
+    // fn parse_as_cfrac() -> InfiniteContinuedFraction;
+}
+
+impl<I: Iterator<Item = u8>> ParseContinuedFraction for I {
+
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -708,22 +723,22 @@ mod tests {
     }
 
     #[test]
+    fn inf_cont_frac_utility_test() {
+        let e = E {};
+
+        // take()
+        assert_eq!((e.cfrac::<i32>() + (-2)).take(5), ContinuedFraction::new(vec![0,1,2,1,1], vec![], false));
+        assert_eq!((e.cfrac::<i32>() + (-3)).take(5), ContinuedFraction::new(vec![0,3,1,1,4], vec![], true));
+    }
+
+    #[test]
     fn inf_cont_frac_arithmetic_test() {
         let e = E {};
-        let e_cf = InfiniteContinuedFraction(e.cfrac::<i64>());
-        let ep1_cf = e_cf + 1;
+        let ep1_cf = e.cfrac::<i32>() + 1;
         assert_eq!(ep1_cf.0.take(5).collect::<Vec<_>>(), vec![3,1,2,1,1]);
 
         let sq2 = ContinuedFraction::<u32>::new(vec![1], vec![2], false);
         let sq2p1 = sq2.clone() + 1;
         assert_eq!((sq2.expanded() + 1).0.take(5).collect::<Vec<_>>(), sq2p1.expanded().0.take(5).collect::<Vec<_>>());
-    }
-
-    #[test]
-    fn inf_cont_frac_utility_test() {
-        let e = E {};
-        let e_cf = InfiniteContinuedFraction(e.cfrac::<i32>());
-        assert_eq!((e_cf + (-2)).take(5), ContinuedFraction::new(vec![0,1,2,1,1], vec![], false));
-        assert_eq!((e_cf + (-3)).take(5), ContinuedFraction::new(vec![0,3,1,1,4], vec![], true));
     }
 }

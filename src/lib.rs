@@ -4,5 +4,5 @@ pub mod symbols;
 pub mod traits;
 
 pub use cont_frac::{ContinuedFraction, GeneralContinuedFraction};
-pub use traits::{Irrational};
+pub use traits::{Approximation, Computable};
 pub use quad_surd::QuadraticSurd;

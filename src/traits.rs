@@ -4,15 +4,9 @@ use num_rational::Ratio;
 #[cfg(feature = "num-bigint")]
 use num_bigint::{BigInt, BigUint};
 
-/// A marker trait to symbol represents a irrational number
-pub trait Irrational : ToPrimitive {}
-
-// TODO: add Num trait to Irrational
-// TODO: impl Irrational for QuadraticSurd and ContinuedFraction
-
 /// In case there are multiple solution for square root,
 /// only canonical result will be returned 
-pub trait FromSqrt<T> : Sized  {
+pub trait FromSqrt<T> : Sized {
     type Error;
 
     fn from_sqrt(t: T) -> Result<Self, Self::Error>;
@@ -24,13 +18,14 @@ pub enum Approximation<T> {
     Exact(T)
 }
 
-// note: we could also have FloatApproximation,
-//       but it's only useful when we have a BigFloat type
-// TODO: implement limit as the limit of denominator
-// TODO: wait for https://github.com/rust-num/num-rational/issues/100
-pub trait RationalApproximation<T> {
+// TODO: put this trait into num-traits (https://github.com/rust-num/num-rational/issues/100)
+/// This trait represents a real number that is computable
+/// See https://en.wikipedia.org/wiki/Computable_number
+pub trait Computable<T> {
     /// Return an approximated rational representation of the number
-    fn approx_rational(&self, limit: &T) -> Approximation<Ratio<T>>;
+    /// The `limit` argument specify the maximum value of denominator. This will
+    /// ensures the error of the approximation is less than 1/limit^2.
+    fn approximated(&self, limit: &T) -> Approximation<Ratio<T>>;
 }
 
 // TODO: implement the rational approximation for all irrational types

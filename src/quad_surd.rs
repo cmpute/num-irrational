@@ -2,7 +2,7 @@ use core::ops::{Add, Sub, Mul, Div, Neg};
 use num_traits::{FromPrimitive, ToPrimitive, RefNum, NumRef, Signed, Zero, One, CheckedAdd, CheckedMul};
 use num_integer::{Integer, Roots, sqrt};
 use std::fmt;
-use crate::traits::{Irrational, FromSqrt, Approximation, RationalApproximation, WithSigned, WithUnsigned};
+use crate::traits::{FromSqrt, Approximation, Computable, WithSigned, WithUnsigned};
 use crate::cont_frac::ContinuedFraction;
 
 use num_rational::Ratio;
@@ -422,11 +422,11 @@ impl<T: Integer> TryFrom<QuadraticSurd<T>> for ContinuedFraction<T> {
 
 impl<T: QuadraticSurdBase + CheckedAdd + WithUnsigned<Unsigned = U>,
      U: Integer + Clone + CheckedAdd + CheckedMul + WithSigned<Signed = T>>
-RationalApproximation<T> for QuadraticSurd<T>
+     Computable<T> for QuadraticSurd<T>
 where for<'r> &'r T: RefNum<T>{
     #[cfg(not(feature="complex"))]
-    fn approx_rational(&self, limit: &T) -> Approximation<Ratio<T>> {
-        ContinuedFraction::<U>::from(self.clone()).approx_rational(limit)
+    fn approximated(&self, limit: &T) -> Approximation<Ratio<T>> {
+        ContinuedFraction::<U>::from(self.clone()).approximated(limit)
     }
 }
 
@@ -633,9 +633,6 @@ where for<'r> &'r T: RefNum<T> {
         quadsurd_to_f64(self.a.to_i64()?, self.b.to_i64()?, self.c.to_i64()?, self.r.to_i64()?)
     }
 }
-
-impl<T: QuadraticSurdBase + ToPrimitive> Irrational for QuadraticSurd<T>
-where for<'r> &'r T: RefNum<T> {}
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct FromSqrtError {
