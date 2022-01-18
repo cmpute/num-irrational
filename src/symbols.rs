@@ -3,7 +3,7 @@
 use num_traits::{One, Num, NumRef, RefNum, Signed, FromPrimitive};
 use num_integer::Integer;
 use num_rational::Ratio;
-use std::ops::{AddAssign, MulAssign};
+use std::ops::{AddAssign};
 use super::cont_frac::InfiniteContinuedFraction;
 
 /// √2

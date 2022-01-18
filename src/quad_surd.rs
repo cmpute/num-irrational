@@ -1,5 +1,5 @@
-use core::ops::{Add, Sub, Mul, Div, Neg};
-use num_traits::{FromPrimitive, ToPrimitive, RefNum, NumRef, Signed, Zero, One, CheckedAdd, CheckedMul};
+use core::ops::{Add, Sub, Mul, Div, Neg, AddAssign};
+use num_traits::{Num, FromPrimitive, ToPrimitive, RefNum, NumRef, Signed, Zero, One, CheckedAdd, CheckedMul};
 use num_integer::{Integer, Roots, sqrt};
 use std::fmt;
 use crate::traits::{FromSqrt, Approximation, Computable, WithSigned, WithUnsigned};
@@ -362,7 +362,7 @@ where for<'r> &'r T: RefNum<T>, for<'r> &'r U: RefNum<U> {
 // Reference: http://www.numbertheory.org/courses/MP313/lectures/lecture17/page5.html
 //            http://www.numbertheory.org/gnubc/surd
 // assumes positive surd, parameter `neg` determines the sign of the fraction
-fn quadsurd_to_contfrac<T: QuadraticSurdBase + WithUnsigned<Unsigned = U>, U: Integer>
+fn quadsurd_to_contfrac<T: QuadraticSurdBase + WithUnsigned<Unsigned = U> + AddAssign, U>
 (a: T, b: T, c: T, r: T, neg: bool) -> ContinuedFraction<U>
 where for<'r> &'r T: RefNum<T> {
     debug_assert!(!c.is_zero() && r >= T::zero());
@@ -376,24 +376,24 @@ where for<'r> &'r T: RefNum<T> {
     }
 
     // find the reduced form and aperiodic coefficients
-    let mut a_coeffs: Vec<U> = Vec::new();
+    let mut a_coeffs: Vec<T> = Vec::new();
     let rd = d.sqrt();
     while a_coeffs.len() == 0 || // ensure that we have a first coefficient
           !(p <= rd && rd < (&p+&q) && (&q-&p) <= rd) {
         let a = (&rd + &p).div_floor(&q);
         p = &a*&q - p;
         q = (&d - &p*&p) / q;
-        a_coeffs.push(a.to_unsigned());
+        a_coeffs.push(a);
     }
 
     // find the periodic coefficients
-    let mut p_coeffs: Vec<U> = Vec::new();
+    let mut p_coeffs: Vec<T> = Vec::new();
     let (init_p, init_q) = (p.clone(), q.clone());
     loop {
         let a = (&rd + &p).div_floor(&q);
         p = &a*&q - p;
         q = (&d - &p*&p) / q;
-        p_coeffs.push(a.to_unsigned());
+        p_coeffs.push(a);
         if p == init_p && q == init_q { break }
     }
 
@@ -401,7 +401,7 @@ where for<'r> &'r T: RefNum<T> {
 }
 
 #[cfg(not(feature="complex"))]
-impl<T: QuadraticSurdBase + WithUnsigned<Unsigned = U>, U: Integer>
+impl<T: QuadraticSurdBase + WithUnsigned<Unsigned = U> + AddAssign, U>
 From<QuadraticSurd<T>> for ContinuedFraction<U>
 where for<'r> &'r T: RefNum<T> {
     fn from(s: QuadraticSurd<T>) -> Self {
@@ -420,7 +420,7 @@ impl<T: Integer> TryFrom<QuadraticSurd<T>> for ContinuedFraction<T> {
     }
 }
 
-impl<T: QuadraticSurdBase + CheckedAdd + WithUnsigned<Unsigned = U>,
+impl<T: QuadraticSurdBase + CheckedAdd + AddAssign + WithUnsigned<Unsigned = U>,
      U: Integer + Clone + CheckedAdd + CheckedMul + WithSigned<Signed = T>>
      Computable<T> for QuadraticSurd<T>
 where for<'r> &'r T: RefNum<T>{

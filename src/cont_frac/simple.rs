@@ -1,5 +1,5 @@
 use core::str::FromStr;
-use std::ops::{Add, Mul};
+use std::ops::{Add, Mul, AddAssign};
 use std::fmt;
 use num_traits::{Num, One, Zero, Signed, NumRef, RefNum, CheckedAdd, CheckedMul};
 use num_integer::{Integer};
@@ -9,7 +9,7 @@ use crate::traits::{Computable, Approximation, WithSigned, WithUnsigned};
 use crate::quad_surd::{QuadraticSurd, QuadraticSurdBase};
 
 /// This struct represents a simple continued fraction `a0 + 1/(a1 + 1/ (a2 + ...))`
-/// Where a0, a1, a2 are positive integers
+/// Where a0 is an signed integer, a1, a2, .. are positive integers
 /// It's capable of representing rational numbers and quadratic surds
 #[derive(Clone, Debug, PartialEq)]
 pub struct ContinuedFraction<T> {
@@ -50,37 +50,160 @@ impl<T> ContinuedFraction<T> {
     }
 }
 
-impl<T: Num> ContinuedFraction<T> {
-    pub fn new(a_coeffs: Vec<T>, p_coeffs: Vec<T>, negative: bool) -> Self {
-        let mut dedup_a = Vec::with_capacity(a_coeffs.len());
-        let mut last_zero = false;
-        for a in a_coeffs {
-            if last_zero {
-                if a.is_zero() {
-                    continue; // skip consecutive 2 zeros
-                }
+impl<T> ContinuedFraction<T> {
+    /// This function will make sure that if two numbers are equal,
+    /// their internal representation in continued fraction will be the same
+    pub fn new<U: Num + PartialOrd + AddAssign + WithUnsigned<Unsigned = T>>
+    (a_coeffs: Vec<U>, p_coeffs: Vec<U>, negate: bool) -> Self {
+        if a_coeffs.len() == 0 && p_coeffs.len() == 0 {
+            panic!("at least one coefficient is required!");
+        }
 
-                last_zero = false;
-            } else {
-                if a.is_zero() {
-                    last_zero = true;
-                }
+        let mut negate = negate; // carry the flag when we process through the coefficients
+        let mut negative = None; // final sign for the number
+        let mut dedup_a: Vec<U> = Vec::with_capacity(a_coeffs.len());
+        let mut it = a_coeffs.into_iter();
+
+        // iteratively consume aperiodic coefficients
+        loop {
+            match it.next() {
+                Some(a) => {
+                    // apply negate flag
+                    let a = if negate { U::zero() - a } else {a};
+
+                    // special cases
+                    if dedup_a.len() == 0 { // if first element
+                        // make sure the first element is non-negative
+                        if a < U::zero() {
+                            dedup_a.push(U::zero() - a);
+                            negative = Some(true);
+                            negate = !negate;
+                        } else {
+                            if !a.is_zero() { negative = Some(false); }
+                            dedup_a.push(a);
+                        }
+                        continue;
+                    } else if a.is_zero() { // if a is zero
+                        if dedup_a.last().unwrap().is_zero() {
+                            dedup_a.pop(); // remove consecutive 2 zeros
+                        } else {
+                            dedup_a.push(a); // dealt by the next value
+                        }
+                        continue;
+                    }
+
+                    // make sure all coefficients are non-negative
+                    if a < U::zero() {
+                        // In this case we use the following formula
+                        // [.., a_{n-1}, -a_n, a_{n+1}, ..] = [.., a_{n-1}-1, 1, a_n-1, -[a_{n+1}, ..]]
+                        let mut target = a;
+                        loop {
+                            let am1 = dedup_a.pop().unwrap(); // a_{n-1}
+                            let has_am2 = dedup_a.len() != 0; // has a_{n-2}
+                            debug_assert!(am1 >= U::zero());
+
+                            if am1.is_one() {
+                                if has_am2 {
+                                    // [.., a_{n-2}, 1-1, 1, a_n-1, -[a_{n+1}, ..]]
+                                    // = [.., a_{n-2}+1, a_n-1, -[a_{n+1}, ..]]
+                                    *dedup_a.last_mut().unwrap() += U::one();
+                                    dedup_a.push(U::zero() - target - U::one());
+                                } else {
+                                    // a_{n-1}-1 = 0 will be the first term
+                                    dedup_a.push(U::zero());
+                                    dedup_a.push(U::one());
+                                    dedup_a.push(U::zero() - target - U::one());
+                                    negative = Some(false);
+                                }
+                                negate = !negate;
+                                break;
+                            } else if am1.is_zero() {
+                                if has_am2 {
+                                    // [.., a_{n-2}, 0-1, 1, a_n-1, -[a_{n+1}, ..]]
+                                    // = [.., a_{n-2}-1, 1, 0, -[1, a_n-1, -[a_{n+1}, ..]]]
+                                    // = [.., a_{n-2}-a_n, a_{n+1}, ..]
+                                    let am2 = dedup_a.pop().unwrap();
+                                    let new_target = am2 + target;
+                                    if new_target < U::zero() {
+                                        // propagate to previous terms
+                                        target = new_target;
+                                    } else {
+                                        dedup_a.push(new_target);
+                                        break;
+                                    }
+                                } else {
+                                    // a_n is the first non-zero coefficient, flip the sign
+                                    dedup_a.push(U::zero());
+                                    dedup_a.push(U::zero() - target);
+                                    negative = Some(true);
+                                    negate = !negate;
+                                    break;
+                                }
+                            } else {
+                                // normal case
+                                debug_assert!(am1 > U::one());
+                                dedup_a.push(am1 - U::one());
+                                dedup_a.push(U::one());
+                                dedup_a.push(U::zero() - target - U::one());
+                                negate = !negate;
+                                break;
+                            }
+                        }
+                    } else {
+                        if dedup_a.last().unwrap().is_zero() && dedup_a.len() > 1 {
+                            // combine current value with the value before zero
+                            dedup_a.pop();
+                            *dedup_a.last_mut().unwrap() += a;
+                        } else {
+                            debug_assert!(!a.is_zero());
+                            if matches!(negative, None) {
+                                if a < U::zero() { println!("Check1!"); }
+                                negative = Some(a < U::zero());
+                            }
+                            dedup_a.push(a);
+                        }
+                    }
+                },
+                None => { break; }
             }
-
-            dedup_a.push(a);
         }
 
         if dedup_a.len() == 0 && p_coeffs.len() == 0 {
-            panic!("at least one coefficient is required!")
+            panic!("no effective coefficient!")
         }
 
-        // clear negative sign for 0
-        let mut negative = negative;
-        if dedup_a.len() == 1 && dedup_a[0] == T::zero() && p_coeffs.len() == 0 && negative {
-            negative = false;
+        // when the last term is one or still zero
+        if p_coeffs.len() == 0 {
+            while dedup_a.len() >= 2 {
+                let last_a = dedup_a.last().unwrap();
+                if last_a.is_zero() {
+                    dedup_a.pop(); dedup_a.pop();
+                } else if last_a.is_one() {
+                    let one = dedup_a.pop().unwrap();
+                    *dedup_a.last_mut().unwrap() += one;
+                } else {
+                    break;
+                }
+            }
+
+            if dedup_a.len() == 1 && dedup_a[0].is_zero() {
+                negative = Some(false);
+            }
         }
 
-        ContinuedFraction { a_coeffs: dedup_a, p_coeffs, negative }
+        if matches!(negative, None) {
+            if matches!(p_coeffs.first(), Some(p) if p <= &U::zero()) {
+                // TODO: how to handle negative coefficients in the periodic parts
+                unimplemented!()
+            } else {
+                negative = Some(negate);
+            }
+        }
+
+        // collect the results
+        let a_coeffs: Vec<T> = dedup_a.into_iter().map(|v| v.to_unsigned()).collect();
+        let p_coeffs: Vec<T> = p_coeffs.into_iter().map(|v| v.to_unsigned()).collect();
+        ContinuedFraction { a_coeffs, p_coeffs, negative: negative.unwrap() }
     }
 }
 
@@ -139,7 +262,6 @@ Iterator for GeneralCoefficients<I> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.negative {
-            self.negative = false; // only apply to the first coefficient
             self.coeffs.next().map(|v| (U::one(), -v.clone().to_signed()))
         } else {
             self.coeffs.next().map(|v| (U::one(), v.clone().to_signed()))
@@ -177,7 +299,6 @@ Iterator for SignedCoefficients<I> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.negative {
-            self.negative = false; // only apply to the first coefficient
             self.coeffs.next().map(|v| -v.clone().to_signed())
         } else {
             self.coeffs.next().map(|v| v.clone().to_signed())
@@ -204,7 +325,7 @@ impl<T> ContinuedFraction<T> {
     }
 
     /// Returns an iterator of the coefficients in the continued fraction.
-    /// The first coefficient is signed.
+    /// The coefficients will be negative if the number is negative
     pub fn coeffs_signed(&self) -> SignedCoefficients<Coefficients<T>> {
         SignedCoefficients {
             coeffs: self.coeffs(), negative: self.negative
@@ -263,7 +384,6 @@ Computable<U> for ContinuedFraction<T>
         }
     }
 }
-
 
 impl<T: fmt::Display> fmt::Display for ContinuedFraction<T>
 {
@@ -415,7 +535,7 @@ where for <'r> &'r U: RefNum<U>{
     }
 }
 
-impl<T: QuadraticSurdBase + WithUnsigned<Unsigned = U>,
+impl<T: QuadraticSurdBase + AddAssign + WithUnsigned<Unsigned = U>,
      U: Integer + Clone + NumRef + CheckedAdd + CheckedMul + WithSigned<Signed = T>>
 Mul<T> for ContinuedFraction<U>
 where for<'r> &'r T: RefNum<T>, for<'r> &'r U: RefNum<U> {
@@ -502,59 +622,16 @@ where for <'r> &'r T: RefNum<T> {
         })
     }
 
-    /// Take first N coefficients in the sequence and turn it into a
-    /// `ContinuedFraction` object. Note that this method only accept
-    /// the coefficients with same sign.
-    /// TODO: provide simplity method for InfiniteContinuedFraction to allow conversion to this form
+    /// Take first N coefficients in the sequence and turn it into a `ContinuedFraction` object.
     pub fn take<U>(self, count: usize) -> ContinuedFraction<U>
-    where T: WithUnsigned<Unsigned = U> {
-        let mut it = self.0;
-        let mut coeffs = Vec::with_capacity(count);
-
-        // utility function to get abs value and signum
-        // signum is None when v is zero
-        let abs_signum = |v: T| {
-            if v < T::zero() {
-                ((T::zero() - v).to_unsigned(), Some(true))
-            } else {
-                let s = if v.is_zero() { None } else { Some(false) };
-                (v.to_unsigned(), s)
-            } 
-        };
-
-        // parse the first coeff
-        let (a1, mut signum) = if let Some(v) = it.next() {
-            abs_signum(v)
-        } else {
-            panic!("there should be at least one coefficient!")
-        };
-        coeffs.push(a1);
-
-        // collect the remaining coeffs
-        let mut count = count - 1;
-        while count > 0 {
-            match it.next() {
-                Some(v) => {
-                    let (a, new_signum) = abs_signum(v);
-                    match (signum, new_signum) {
-                        (Some(s), Some(ns)) => if s != ns { 
-                            panic!("all the coefficient should have the same sign");
-                        },
-                        (None, Some(ns)) => { signum = Some(ns); } // update sign
-                        (_, None) => {}
-                    };
-                    coeffs.push(a);
-                }, None => break
-            }
-            count -= 1;
-        }
-
-        ContinuedFraction { a_coeffs: coeffs, p_coeffs: Vec::new(), negative: signum.unwrap() }
+    where T: WithUnsigned<Unsigned = U> + AddAssign {
+        ContinuedFraction::new(self.0.take(count).collect(), Vec::new(), false)
     }
 
     /// Take first N coefficients in the sequence and turn it into a
     /// `ContinuedFraction` object with periodic detection.
     pub fn take_periodic<U>(self, count: usize) -> ContinuedFraction<U> {
+        // TODO: detect re-occurence of convergents
         unimplemented!()
     }
 }
@@ -647,22 +724,34 @@ mod tests {
     use crate::symbols::E;
 
     #[test]
+    fn cont_frac_creation_test() {
+        let cf = ContinuedFraction::new(vec![0,1,2], vec![3,4], false);
+        assert_eq!(cf, ContinuedFraction::new(vec![0,1,0,0,2], vec![3,4], false));
+        assert_eq!(cf, ContinuedFraction::new(vec![0,1,1,0,1], vec![3,4], false));
+
+        let cf = ContinuedFraction::new(vec![2,3,4], vec![], true);
+        assert_eq!(cf, ContinuedFraction::new(vec![2,1,0,2,4], vec![], true));
+        assert_eq!(cf, ContinuedFraction::new(vec![3,-1,-2,-4], vec![], true));
+        assert_eq!(cf, ContinuedFraction::new(vec![-3,1,2,4], vec![], false));
+    }
+
+    #[test]
     fn cont_frac_iter_test() {
         let one = ContinuedFraction::<u32>::new(vec![1], vec![], false);
-        assert_eq!(one.coeffs().map(|&v| v).collect::<Vec<_>>(), vec![1]);
+        assert_eq!(one.coeffs().cloned().collect::<Vec<_>>(), vec![1]);
         assert_eq!(one.convergents().collect::<Vec<_>>(), vec![Ratio::from(1)]);
 
         let n_one = ContinuedFraction::<u32>::new(vec![1], vec![], true);
-        assert_eq!(n_one.coeffs().map(|&v| v).collect::<Vec<_>>(), vec![1]);
+        assert_eq!(n_one.coeffs().cloned().collect::<Vec<_>>(), vec![1]);
         assert_eq!(n_one.convergents().collect::<Vec<_>>(), vec![Ratio::from(-1)]);
 
         let sq2 = ContinuedFraction::<u32>::new(vec![1], vec![2], false);
-        assert_eq!(sq2.coeffs().take(5).map(|&v| v).collect::<Vec<_>>(), vec![1, 2, 2, 2, 2]);
+        assert_eq!(sq2.coeffs().take(5).cloned().collect::<Vec<_>>(), vec![1, 2, 2, 2, 2]);
         assert_eq!(sq2.convergents().take(5).collect::<Vec<_>>(),
             vec![Ratio::from(1), Ratio::new(3, 2), Ratio::new(7, 5), Ratio::new(17, 12), Ratio::new(41, 29)]);
 
         let n_sq2 = ContinuedFraction::<u32>::new(vec![1], vec![2], true);
-        assert_eq!(n_sq2.coeffs().take(5).map(|&v| v).collect::<Vec<_>>(), vec![1, 2, 2, 2, 2]);
+        assert_eq!(n_sq2.coeffs().take(5).cloned().collect::<Vec<_>>(), vec![1, 2, 2, 2, 2]);
         assert_eq!(n_sq2.convergents().take(5).collect::<Vec<_>>(),
             vec![Ratio::from(-1), Ratio::new(-3, 2), Ratio::new(-7, 5), Ratio::new(-17, 12), Ratio::new(-41, 29)]);
     }
@@ -671,9 +760,9 @@ mod tests {
     fn cont_frac_conversion_test() {
         assert_eq!(ContinuedFraction::from(Ratio::from(3)), ContinuedFraction::new(vec![3u32], vec![], false));
         assert_eq!(ContinuedFraction::from(Ratio::new(22, 7)), ContinuedFraction::new(vec![3u32, 7], vec![], false));
-        assert_eq!(ContinuedFraction::from(Ratio::new(-22, 7)), ContinuedFraction::new(vec![3u32, 7], vec![], true));
+        assert_eq!(ContinuedFraction::from(Ratio::new(-22, 7)), ContinuedFraction::new(vec![3i32, 7], vec![], true));
         assert_eq!(ContinuedFraction::from(Ratio::new(7, 22)), ContinuedFraction::new(vec![0u32, 3, 7], vec![], false));
-        assert_eq!(ContinuedFraction::from(Ratio::new(-7, 22)), ContinuedFraction::new(vec![0u32, 3, 7], vec![], true));
+        assert_eq!(ContinuedFraction::from(Ratio::new(-7, 22)), ContinuedFraction::new(vec![0i32, 3, 7], vec![], true));
         assert_eq!(ContinuedFraction::from(Ratio::new(355, 113)), ContinuedFraction::new(vec![3u32, 7, 16], vec![], false));
     }
 
@@ -700,8 +789,8 @@ mod tests {
 
         assert_eq!(sq2.clone() + 1, ContinuedFraction::new(vec![2u32], vec![2], false));
         assert_eq!(sq2.clone() + (-1), ContinuedFraction::new(vec![0u32], vec![2], false));
-        assert_eq!(n_sq2.clone() + 1, ContinuedFraction::new(vec![0u32], vec![2], true));
-        assert_eq!(n_sq2.clone() + (-1), ContinuedFraction::new(vec![2u32], vec![2], true));
+        assert_eq!(n_sq2.clone() + 1, ContinuedFraction::new(vec![0i32], vec![2], true));
+        assert_eq!(n_sq2.clone() + (-1), ContinuedFraction::new(vec![2i32], vec![2], true));
 
         // Mul
         assert_eq!(one.clone() * 2, ContinuedFraction::from(2));
@@ -710,8 +799,8 @@ mod tests {
         assert_eq!(n_one.clone() * -2, ContinuedFraction::from(2));
 
         assert_eq!(sq2.clone() * 2, ContinuedFraction::new(vec![2u32], vec![1, 4], false));
-        assert_eq!(sq2.clone() * -2, ContinuedFraction::new(vec![2u32], vec![1, 4], true));
-        assert_eq!(n_sq2.clone() * 2, ContinuedFraction::new(vec![2u32], vec![1, 4], true));
+        assert_eq!(sq2.clone() * -2, ContinuedFraction::new(vec![2i32], vec![1, 4], true));
+        assert_eq!(n_sq2.clone() * 2, ContinuedFraction::new(vec![2i32], vec![1, 4], true));
         assert_eq!(n_sq2.clone() * -2, ContinuedFraction::new(vec![2u32], vec![1, 4], false));
     }
 
@@ -720,7 +809,7 @@ mod tests {
         let e = E {};
 
         // take()
-        assert_eq!((e.cfrac::<i32>() + (-2)).take(5), ContinuedFraction::new(vec![0,1,2,1,1], vec![], false));
+        assert_eq!((e.cfrac::<i32>() + (-2)).take(5), ContinuedFraction::new(vec![0,1,2,2], vec![], false));
         assert_eq!((e.cfrac::<i32>() + (-3)).take(5), ContinuedFraction::new(vec![0,3,1,1,4], vec![], true));
     }
 
