@@ -15,6 +15,9 @@ where for<'r> &'r T: RefNum<T> {
     fn convergents(self) -> Convergents<Self, T>;
 
     /// Simplify the generalized continued fraction to an `InfiniteContinuedFraction`
+    /// Note that usually this function will generate a simple continued fraction with most
+    /// coefficients being positive. If you want to ensure the positiveness, you can either
+    /// call collect() on `InfiniteContinuedFraction`, or call simplify() again.
     fn simplify(self) -> InfiniteContinuedFraction<Simplified<Self, T>> where Self: Sized;
 
     /// Retrieve the decimal representation of the number, as an iterator of digits.
@@ -129,6 +132,7 @@ Computable<T> for I where for<'r> &'r T: RefNum<T> {
 
 // TODO: implement continued fraction for various functions
 // REF: https://crypto.stanford.edu/pbc/notes/contfrac/cheat.html
+// List: coth(1/n), tan(1/n), arctan(n), tanh(n), tan(n), log(1+x), exp(2m/n), exp(1/n)
 
 #[derive(Debug, Clone, Copy)]
 pub struct ExpCoefficients<T> { exponent: T, i: T }
@@ -171,8 +175,9 @@ mod tests {
         let pi = Pi {};
         assert_eq!(pi.gfrac().convergents().skip(1).take(5).map(|c| c.into()).collect::<Vec<(i32, i32)>>(),
                    vec![(4,1), (3,1), (19,6), (160,51), (1744,555)]);
-        assert_eq!(pi.gfrac::<u32>().decimals().take(20).collect::<Vec<_>>(),
-                   vec![b'3', b'1', b'4', b'1', b'5', b'9', b'2', b'6']);
+        assert_eq!(pi.gfrac().simplify().0.take(6).collect::<Vec<u64>>(),
+                   vec![3, 7, 15, 1, 292, 1]);
+        assert_eq!(pi.gfrac::<u32>().decimals().take(20).collect::<Vec<_>>(), b"31415926");
     }
 
     #[test]

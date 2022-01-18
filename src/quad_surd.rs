@@ -682,7 +682,7 @@ where for<'r> &'r T: RefNum<T> {
     }
 }
 
-impl<T: QuadraticSurdBase + CheckedMul + std::fmt::Debug> FromSqrt<QuadraticSurd<T>> for QuadraticSurd<T>
+impl<T: QuadraticSurdBase + CheckedMul> FromSqrt<QuadraticSurd<T>> for QuadraticSurd<T>
 where for<'r> &'r T: RefNum<T> {
     type Error = FromSqrtError;
 

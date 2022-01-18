@@ -68,12 +68,13 @@ impl_primitive_sign!(i8, u8);
 impl_primitive_sign!(i16, u16);
 impl_primitive_sign!(i32, u32);
 impl_primitive_sign!(i64, u64);
+impl_primitive_sign!(i128, u128);
 
 #[cfg(feature = "num-bigint")]
 impl WithSigned for BigUint {
     type Signed = BigInt;
     #[inline]
-    fn to_signed(self) -> Self::Signed { BigUint::from(self) }
+    fn to_signed(self) -> Self::Signed { BigInt::from(self) }
 }
 
 #[cfg(feature = "num-bigint")]
@@ -87,7 +88,7 @@ impl WithUnsigned for BigUint {
 impl WithUnsigned for BigInt {
     type Unsigned = BigUint;
     #[inline]
-    fn to_unsigned(self) -> Self::Unsigned { self.data() }
+    fn to_unsigned(self) -> Self::Unsigned { self.to_biguint().unwrap() }
 }
 
 #[cfg(feature = "num-bigint")]
