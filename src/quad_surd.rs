@@ -9,8 +9,6 @@ use std::fmt;
 
 #[cfg(feature = "num-bigint")]
 use num_bigint::BigInt;
-#[cfg(feature = "num-prime")]
-use num_prime;
 use num_rational::Ratio;
 
 /// A helper trait to define valid type that can be used for QuadraticSurd
@@ -130,17 +128,6 @@ where
         }
     }
 
-    /// Try to eliminate factors of root that is a squared number
-    #[cfg(not(feature = "num-prime"))]
-    fn reduce_root(&mut self) {
-        unimplemented!() // TODO: reduce by iteratively check square numbers
-    }
-
-    #[cfg(feature = "num-prime")]
-    fn reduce_root(&mut self, factor: Option<T>) {
-        unimplemented!() // TODO: implement with unified factorization interface
-    }
-
     fn reduce_root_hinted(self, hint: T) -> Self {
         let hint = hint.abs();
         if hint.is_zero() || hint.is_one() {
@@ -207,19 +194,6 @@ where
 
         let aa = Ratio::from(two) * a;
         Some(Self::new_split(-b * aa.recip(), aa.recip(), delta))
-    }
-
-    /// Returns a reduced version of self.
-    ///
-    /// This method will try to eliminate common divisors between a, b, c and
-    /// also try to eliminate square factors of r.
-    ///
-    #[inline]
-    pub fn reduced(self) -> Self {
-        let mut result = self;
-        result.reduce();
-        result.reduce_root();
-        result
     }
 
     /// Returns the reciprocal of the surd
@@ -348,6 +322,48 @@ where
                 &self.a * &self.a > &self.b * &self.b * &self.r
             }
         }
+    }
+}
+
+impl<T: QuadraticSurdBase + FromPrimitive + CheckedMul> QuadraticSurd<T>
+where
+    for<'r> &'r T: RefNum<T>,
+{
+    /// Try to eliminate factors of root that is a squared number
+    fn reduce_root(&mut self) {
+        const SMALL_PRIMES: [u8; 54] = [
+            2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97,
+            101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157, 163, 167, 173, 179, 181, 191, 193,
+            197, 199, 211, 223, 227, 229, 233, 239, 241, 251,
+        ];
+        for p in SMALL_PRIMES {
+            let p = T::from_u8(p).unwrap();
+            if let Some(p2) = p.checked_mul(&p) {
+                loop {
+                    let (quo, rem) = self.r.div_rem(&p2);
+                    if rem.is_zero() {
+                        self.r = quo;
+                        self.b = &self.b * &p;
+                        // common factors between a, b, c will be handled by reduce()
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    
+    /// Returns a reduced version of self.
+    ///
+    /// This method will try to eliminate common divisors between a, b, c and
+    /// also try to eliminate square factors of r.
+    ///
+    #[inline]
+    pub fn reduced(self) -> Self {
+        let mut result = self;
+        result.reduce_root();
+        result.reduce();
+        result
     }
 }
 

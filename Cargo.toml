@@ -24,11 +24,6 @@ default-features = false
 [dependencies.num-rational]
 version = "0.4.0"
 
-[dependencies.num-prime]
-optional = true
-version = "0.0.1"
-default-features = false
-
 [dependencies.num-complex]
 optional = true
 version = "0.4.0"
