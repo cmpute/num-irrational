@@ -21,3 +21,7 @@ println!("Approximation under 100: {}", sq2_approx); // 99/70
 let sq2_fraction = ContinuedFraction::from(sq2);
 println!("Continued Fraction: {}", sq2_fraction); // [1; (2)]
 ```
+
+# Roadmap
+- v0.1: documentation
+- v0.1: support complex number for QuadSurd

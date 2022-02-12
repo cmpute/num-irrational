@@ -1,10 +1,10 @@
 //! This module contains several predefined irrational math constants
 
-use num_traits::{One, Num, NumRef, RefNum, Signed, FromPrimitive};
+use super::cont_frac::InfiniteContinuedFraction;
 use num_integer::Integer;
 use num_rational::Ratio;
-use std::ops::{AddAssign};
-use super::cont_frac::InfiniteContinuedFraction;
+use num_traits::{FromPrimitive, Num, NumRef, One, RefNum, Signed};
+use std::ops::AddAssign;
 
 /// √2
 pub struct Sqrt2 {}
@@ -21,7 +21,7 @@ pub struct Gamma {}
 /// G, Catalan's constant
 // TODO: https://math.stackexchange.com/questions/3620230/conjectured-continued-fraction-formula-for-catalans-constant
 // https://functions.wolfram.com/Constants/Catalan/10/
-pub struct G {} 
+pub struct G {}
 
 impl E {
     pub fn cfrac<T: Num + NumRef + Clone>(&self) -> InfiniteContinuedFraction<ECoefficients<T>> {
@@ -31,7 +31,10 @@ impl E {
 
 #[derive(Debug, Clone, Copy)]
 /// The sequence used here is the famous pattern, `e`=[2;1,2,1,1,4,1...]
-pub struct ECoefficients<T> { i: T, m: u8 }
+pub struct ECoefficients<T> {
+    i: T,
+    m: u8,
+}
 
 impl<T: Num + NumRef + Clone> Iterator for ECoefficients<T> {
     type Item = T;
@@ -43,7 +46,7 @@ impl<T: Num + NumRef + Clone> Iterator for ECoefficients<T> {
         } else {
             let result = match self.m {
                 1 => Some(self.i.clone()),
-                _ => Some(T::one())
+                _ => Some(T::one()),
             };
 
             if self.m == 2 {
@@ -61,7 +64,10 @@ impl<T: Num + NumRef + Clone> Iterator for ECoefficients<T> {
 impl Pi {
     /// pi has only generalized continued fraction representation
     pub fn gfrac<T: Num>(&self) -> PiCoefficients<T> {
-        PiCoefficients { a: T::zero(), b: T::zero() }
+        PiCoefficients {
+            a: T::zero(),
+            b: T::zero(),
+        }
     }
 }
 
@@ -69,7 +75,10 @@ impl Pi {
 /// it will converge faster later on.
 /// Reference: <https://en.wikipedia.org/wiki/Generalized_continued_fraction#%CF%80>
 #[derive(Debug, Clone, Copy)]
-pub struct PiCoefficients<T> { a: T, b: T }
+pub struct PiCoefficients<T> {
+    a: T,
+    b: T,
+}
 
 impl<T: Num + NumRef + Clone + AddAssign> Iterator for PiCoefficients<T> {
     type Item = (T, T);
@@ -77,10 +86,12 @@ impl<T: Num + NumRef + Clone + AddAssign> Iterator for PiCoefficients<T> {
     fn next(&mut self) -> Option<Self::Item> {
         let two = T::one() + T::one();
 
-        if self.a.is_zero() { // first item
+        if self.a.is_zero() {
+            // first item
             self.a = T::one();
             Some((T::one(), T::zero())) // return (1, 0)
-        } else if self.b.is_zero() { // second item
+        } else if self.b.is_zero() {
+            // second item
             self.b = T::one() + two.clone();
             Some((two.clone() + two, T::one())) // return (4, 1)
         } else {
@@ -102,16 +113,29 @@ impl Gamma {
 
         // the initial values for d are starting from n = 2
         GammaCoefficients {
-            n: 0, qm1: two, qm2: T::one(), sm1: -Ratio::one(), rm1: Ratio::one()
+            n: 0,
+            qm1: two,
+            qm2: T::one(),
+            sm1: -Ratio::one(),
+            rm1: Ratio::one(),
         }
     }
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct GammaCoefficients<T> { n: usize, qm1: T, qm2: T, sm1: Ratio<T>, rm1: Ratio<T> }
+pub struct GammaCoefficients<T> {
+    n: usize,
+    qm1: T,
+    qm2: T,
+    sm1: Ratio<T>,
+    rm1: Ratio<T>,
+}
 
-impl<T: Integer + Signed + NumRef + Clone + AddAssign + FromPrimitive>
-Iterator for GammaCoefficients<T> where for <'r> &'r T: RefNum<T> {
+impl<T: Integer + Signed + NumRef + Clone + AddAssign + FromPrimitive> Iterator
+    for GammaCoefficients<T>
+where
+    for<'r> &'r T: RefNum<T>,
+{
     type Item = (T, T);
 
     /// Reference: Pilehrood, K. H., & Pilehrood, T. H. (2013). On a continued fraction expansion
@@ -121,11 +145,11 @@ Iterator for GammaCoefficients<T> where for <'r> &'r T: RefNum<T> {
             0 => {
                 self.n = 1;
                 return Some((T::one(), T::zero())); // return (1, 0)
-            },
+            }
             1 => {
                 self.n = 2;
                 return Some((T::one(), T::from_u8(2).unwrap()));
-            },
+            }
             _ => {}
         };
 
@@ -140,7 +164,8 @@ Iterator for GammaCoefficients<T> where for <'r> &'r T: RefNum<T> {
 
         // Eq(35): s_n = (n-1)^2*s_{n-1} + (n-2)/n*q_{n-1} is a rational
         // s_0 = 1, s_1 = -1
-        let s = Ratio::from(&nm1 * &nm1) * &self.sm1 + Ratio::new(nm2.clone(), n.clone()) * &self.qm1;
+        let s =
+            Ratio::from(&nm1 * &nm1) * &self.sm1 + Ratio::new(nm2.clone(), n.clone()) * &self.qm1;
 
         // Eq(38): a_n = -s_n/s_{n-1}, b_n=2n+(n-2)/n*q_{n-2}/s_{n-1}
         let a = -&s / &self.sm1;
@@ -151,9 +176,7 @@ Iterator for GammaCoefficients<T> where for <'r> &'r T: RefNum<T> {
             1 | 2 => Ratio::one(),
             3 => Ratio::from(T::from_u8(3).unwrap()),
             4 => Ratio::from(T::from_u8(10).unwrap()),
-            _ => {
-                Ratio::from(n * nm1 / two) * &self.sm1
-            }
+            _ => Ratio::from(n * nm1 / two) * &self.sm1,
         };
 
         // astar_n = rho_n*rho_{n-1}*a_n, bstar_n = rho_n*b_n
@@ -179,17 +202,29 @@ mod tests {
     #[test]
     fn cfrac_test() {
         let e = E {};
-        assert_eq!(e.cfrac().0.take(10).collect::<Vec<u32>>(), vec![2u32,1,2,1,1,4,1,1,6,1]);
+        assert_eq!(
+            e.cfrac().0.take(10).collect::<Vec<u32>>(),
+            vec![2u32, 1, 2, 1, 1, 4, 1, 1, 6, 1]
+        );
 
         let pi = Pi {};
-        assert_eq!(pi.gfrac().take(5).collect::<Vec<(u32, u32)>>(),
-                   vec![(1,0), (4,1), (1,3), (4,5), (9,7)]);
-        assert_eq!(pi.gfrac().simplify().0.take(10).collect::<Vec<u64>>(), vec![3,7,15,1,292,1,1,1,2,1]);
+        assert_eq!(
+            pi.gfrac().take(5).collect::<Vec<(u32, u32)>>(),
+            vec![(1, 0), (4, 1), (1, 3), (4, 5), (9, 7)]
+        );
+        assert_eq!(
+            pi.gfrac().simplify().0.take(10).collect::<Vec<u64>>(),
+            vec![3, 7, 15, 1, 292, 1, 1, 1, 2, 1]
+        );
 
         let gamma = Gamma {};
-        assert_eq!(gamma.gfrac().take(6).collect::<Vec<(i32, i32)>>(),
-                   vec![(1,0), (1,2), (-1,4), (-5,16), (36,59), (-15740, 404)]);
-        assert_eq!(gamma.gfrac().simplify().0.take(8).collect::<Vec<i64>>(),
-                    vec![0,1,1,2,1,2,1,3]); // [0;1,1,2,1,2,1,3,1,-4,-1,0,..]
+        assert_eq!(
+            gamma.gfrac().take(6).collect::<Vec<(i32, i32)>>(),
+            vec![(1, 0), (1, 2), (-1, 4), (-5, 16), (36, 59), (-15740, 404)]
+        );
+        assert_eq!(
+            gamma.gfrac().simplify().0.take(8).collect::<Vec<i64>>(),
+            vec![0, 1, 1, 2, 1, 2, 1, 3]
+        ); // [0;1,1,2,1,2,1,3,1,-4,-1,0,..]
     }
 }

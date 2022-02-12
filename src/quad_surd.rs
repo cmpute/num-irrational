@@ -1,27 +1,31 @@
-use core::ops::{Add, Sub, Mul, Div, Neg, AddAssign};
-use num_traits::{Num, FromPrimitive, ToPrimitive, RefNum, NumRef, Signed, Zero, One, CheckedAdd, CheckedMul};
-use num_integer::{Integer, Roots, sqrt};
-use std::fmt;
-use crate::traits::{FromSqrt, Approximation, Computable, WithSigned, WithUnsigned};
 use crate::cont_frac::ContinuedFraction;
+use crate::traits::{Approximation, Computable, FromSqrt, WithSigned, WithUnsigned};
+use core::ops::{Add, AddAssign, Div, Mul, Neg, Sub};
+use num_integer::{sqrt, Integer, Roots};
+use num_traits::{
+    CheckedAdd, CheckedMul, FromPrimitive, NumRef, One, RefNum, Signed, ToPrimitive, Zero,
+};
+use std::fmt;
 
-use num_rational::Ratio;
 #[cfg(feature = "num-bigint")]
 use num_bigint::BigInt;
 #[cfg(feature = "num-prime")]
-use num_prime::PrimeBuffer;
+use num_prime;
+use num_rational::Ratio;
 
 /// A helper trait to define valid type that can be used for QuadraticSurd
 pub trait QuadraticSurdBase: Integer + NumRef + Clone + Roots + Signed {}
 impl<T: Integer + NumRef + Clone + Roots + Signed> QuadraticSurdBase for T {}
 
-/// A type representation quadratic surd number (a + b*sqrt(r)) / c
+/// A type representation quadratic surd number (a + b*sqrt(r)) / c.
+/// If the support for complex number is enabled, then this struct can represent
+/// any quadratic integers.
 #[derive(PartialEq, Eq, Hash, Clone, Debug, Copy)]
-pub struct QuadraticSurd<T>{
+pub struct QuadraticSurd<T> {
     a: T,
     b: T, // zero when reduced if the surd is a rational number
     c: T, // positive when reduced
-    r: T  // zero when reduced if the surd is a rational number
+    r: T, // zero when reduced if the surd is a rational number
 }
 
 impl<T> QuadraticSurd<T> {
@@ -58,7 +62,10 @@ impl<T: Integer> From<T> for QuadraticSurd<T> {
     #[inline]
     fn from(t: T) -> Self {
         QuadraticSurd {
-            a: t, b: T::zero(), c: T::one(), r: T::zero()
+            a: t,
+            b: T::zero(),
+            c: T::one(),
+            r: T::zero(),
         }
     }
 }
@@ -70,13 +77,17 @@ impl<T: Integer> From<Ratio<T>> for QuadraticSurd<T> {
     fn from(t: Ratio<T>) -> Self {
         let (a, c) = t.into();
         QuadraticSurd {
-            a, b: T::zero(), c, r: T::zero()
+            a,
+            b: T::zero(),
+            c,
+            r: T::zero(),
         }
     }
 }
 
 impl<T: QuadraticSurdBase> QuadraticSurd<T>
-where for<'r> &'r T: RefNum<T>
+where
+    for<'r> &'r T: RefNum<T>,
 {
     // TODO: it's possible to support r < 0, but special handling is needed.
     //       And then we can support from_complex, to_complex, is_complex
@@ -121,30 +132,29 @@ where for<'r> &'r T: RefNum<T>
 
     /// Try to eliminate factors of root that is a squared number
     #[cfg(not(feature = "num-prime"))]
-    fn reduce_base(&mut self) {
-        unimplemented! () // TODO: reduce by iteratively check square numbers
+    fn reduce_root(&mut self) {
+        unimplemented!() // TODO: reduce by iteratively check square numbers
     }
 
     #[cfg(feature = "num-prime")]
-    fn reduce_base(&mut self, factor: Option<T>) {
+    fn reduce_root(&mut self, factor: Option<T>) {
         unimplemented!() // TODO: implement with unified factorization interface
     }
-    
-    fn reduce_base_hinted(self, hint: T) -> Self {
+
+    fn reduce_root_hinted(self, hint: T) -> Self {
         let hint = hint.abs();
-        if hint.is_zero() || hint.is_one() { return self; }
+        if hint.is_zero() || hint.is_one() {
+            return self;
+        }
 
         let (quo, rem) = self.r.div_rem(&hint);
-        if rem.is_zero() { // if hint is actually a factor
+        if rem.is_zero() {
+            // if hint is actually a factor
             let root = sqrt(hint.clone());
-            if &root * &root == hint { // if hint is a square number
+            if &root * &root == hint {
+                // if hint is a square number
                 let g = root.gcd(&self.a).gcd(&self.c);
-                return QuadraticSurd::new_raw(
-                    self.a / &g,
-                    self.b * root / &g,
-                    self.c / g,
-                    quo
-                )
+                return QuadraticSurd::new_raw(self.a / &g, self.b * root / &g, self.c / g, quo);
             }
         }
 
@@ -177,18 +187,23 @@ where for<'r> &'r T: RefNum<T>
 
     /// Get the root of a quadratic equation `ax^2 + bx + c` with rational coefficients
     /// This method only returns one of the root `(b + sqrt(b^2 - 4ac)) / 2a`, use `conjugate()` for the other root
+    // TODO (v0.1): rename as from_equation
     #[inline]
     pub fn from_root(a: Ratio<T>, b: Ratio<T>, c: Ratio<T>) -> Option<Self> {
         // degraded cases
         if a.is_zero() {
-            if b.is_zero() { return None }
-            return Some(Self::from(-c / b))
+            if b.is_zero() {
+                return None;
+            }
+            return Some(Self::from(-c / b));
         }
 
         let two = T::one() + T::one();
         let four = &two * &two;
         let delta = &b * &b - Ratio::from(four) * &a * c;
-        if delta.is_negative() { return None } // TODO: skip this with complex number support
+        if delta.is_negative() {
+            return None;
+        } // TODO: skip this with complex number support
 
         let aa = Ratio::from(two) * a;
         Some(Self::new_split(-b * aa.recip(), aa.recip(), delta))
@@ -203,7 +218,7 @@ where for<'r> &'r T: RefNum<T>
     pub fn reduced(self) -> Self {
         let mut result = self;
         result.reduce();
-        result.reduce_base();
+        result.reduce_root();
         result
     }
 
@@ -216,7 +231,7 @@ where for<'r> &'r T: RefNum<T>
             -(&self.c * self.a),
             self.c * self.b,
             &bb * &self.r - aa,
-            self.r
+            self.r,
         )
     }
 
@@ -224,7 +239,10 @@ where for<'r> &'r T: RefNum<T>
     #[inline]
     pub fn conjugate(self) -> Self {
         QuadraticSurd {
-            a: self.a, b: -self.b, c: self.c, r: self.r
+            a: self.a,
+            b: -self.b,
+            c: self.c,
+            r: self.r,
         }
     }
 
@@ -232,14 +250,18 @@ where for<'r> &'r T: RefNum<T>
         self.panic_if_complex();
 
         let br = sqrt(&self.b * &self.b * &self.r);
-        let num = if self.b >= T::zero() { &self.a + br } else { &self.a - br };
+        let num = if self.b >= T::zero() {
+            &self.a + br
+        } else {
+            &self.a - br
+        };
         return Self::from(num / &self.c);
     }
 
     pub fn fract(&self) -> Self {
         self.panic_if_complex();
 
-        return self.clone() - self.trunc()
+        return self.clone() - self.trunc();
     }
 
     /// Converts to an integer, rounding towards zero
@@ -263,7 +285,9 @@ where for<'r> &'r T: RefNum<T>
             Approximation::Exact(Ratio::new_raw(self.a.clone(), self.c.clone()))
         } else {
             Approximation::Approximated(Ratio::new_raw(
-                &self.a + sqrt(&self.b * &self.b * &self.r), self.c.clone()))
+                &self.a + sqrt(&self.b * &self.b * &self.r),
+                self.c.clone(),
+            ))
         }
     }
 
@@ -271,8 +295,16 @@ where for<'r> &'r T: RefNum<T>
     #[inline]
     pub fn floor(&self) -> Self {
         let br = sqrt(&self.b * &self.b * &self.r);
-        let num = if self.b >= T::zero() { &self.a + br } else { &self.a - br - T::one() };
-        let num = if num >= T::zero() { num } else {num - &self.c + T::one()};
+        let num = if self.b >= T::zero() {
+            &self.a + br
+        } else {
+            &self.a - br - T::one()
+        };
+        let num = if num >= T::zero() {
+            num
+        } else {
+            num - &self.c + T::one()
+        };
         return Self::from(num / &self.c);
     }
 
@@ -282,37 +314,56 @@ where for<'r> &'r T: RefNum<T>
         if self.b.is_zero() {
             self.a.is_positive()
         } else if self.b.is_positive() {
-            if self.a.is_positive() { true }
-            else { &self.a * &self.a < &self.b * &self.b * &self.r }
-        } else { // self.b.is_negative()
-            if !self.a.is_positive() { false }
-            else { &self.a * &self.a > &self.b * &self.b * &self.r }
+            if self.a.is_positive() {
+                true
+            } else {
+                &self.a * &self.a < &self.b * &self.b * &self.r
+            }
+        } else {
+            // self.b.is_negative()
+            if !self.a.is_positive() {
+                false
+            } else {
+                &self.a * &self.a > &self.b * &self.b * &self.r
+            }
         }
     }
-    
+
     pub fn is_negative(&self) -> bool {
         self.panic_if_complex();
 
         if self.b.is_zero() {
             self.a.is_negative()
         } else if self.b.is_negative() {
-            if self.a.is_negative() { true }
-            else { &self.a * &self.a < &self.b * &self.b * &self.r }
-        } else { // self.b.is_positive()
-            if !self.a.is_negative() { false }
-            else { &self.a * &self.a > &self.b * &self.b * &self.r }
+            if self.a.is_negative() {
+                true
+            } else {
+                &self.a * &self.a < &self.b * &self.b * &self.r
+            }
+        } else {
+            // self.b.is_positive()
+            if !self.a.is_negative() {
+                false
+            } else {
+                &self.a * &self.a > &self.b * &self.b * &self.r
+            }
         }
     }
 }
 
-fn quadsurd_to_f64<T: Integer + ToPrimitive> (a: T, b: T, c: T, r: T) -> Option<f64> {
+fn quadsurd_to_f64<T: Integer + ToPrimitive>(a: T, b: T, c: T, r: T) -> Option<f64> {
     Some((a.to_f64()? + b.to_f64()? * r.to_f64()?.sqrt()) / c.to_f64()?)
 }
 
-#[cfg(not(feature="complex"))]
-impl<T: Integer + Clone + NumRef + CheckedAdd + CheckedMul + WithSigned<Signed = U>, U: QuadraticSurdBase>
-From<ContinuedFraction<T>> for QuadraticSurd<U>
-where for<'r> &'r T: RefNum<T>, for<'r> &'r U: RefNum<U> {
+#[cfg(not(feature = "complex"))]
+impl<
+        T: Integer + Clone + NumRef + CheckedAdd + CheckedMul + WithSigned<Signed = U>,
+        U: QuadraticSurdBase,
+    > From<ContinuedFraction<T>> for QuadraticSurd<U>
+where
+    for<'r> &'r T: RefNum<T>,
+    for<'r> &'r U: RefNum<U>,
+{
     fn from(s: ContinuedFraction<T>) -> Self {
         // use convergent if it's a rational
         if s.is_rational() {
@@ -327,14 +378,18 @@ where for<'r> &'r T: RefNum<T>, for<'r> &'r U: RefNum<U> {
         while let Some(v) = piter.next() {
             let new_c = v * &c + a;
             let new_d = v * &d + b;
-            a = c; b = d; c = new_c; d = new_d;
+            a = c;
+            b = d;
+            c = new_c;
+            d = new_d;
         }
 
         let psurd = Self::from_root(
             Ratio::from(c.to_signed()),
             Ratio::from(d.to_signed() - a.to_signed()),
-            Ratio::from(-b.to_signed())
-        ).unwrap();
+            Ratio::from(-b.to_signed()),
+        )
+        .unwrap();
 
         // apply the aperiodic part, assume again result = (ax + b) / (cx + d)
         let surd = if s.aperiodic_coeffs().len() == 1 {
@@ -343,28 +398,43 @@ where for<'r> &'r T: RefNum<T>, for<'r> &'r U: RefNum<U> {
             let mut aiter = s.aperiodic_coeffs().iter().skip(1).rev();
             let (mut a, mut b) = (T::zero(), T::one());
             let (mut c, mut d) = (T::one(), aiter.next().unwrap().clone());
-            
+
             while let Some(v) = aiter.next() {
                 let new_c = v * &c + a;
                 let new_d = v * &d + b;
-                a = c; b = d; c = new_c; d = new_d;
+                a = c;
+                b = d;
+                c = new_c;
+                d = new_d;
             }
 
-            (psurd.clone() * a.to_signed() + b.to_signed()) / (psurd * c.to_signed() + d.to_signed())
+            (psurd.clone() * a.to_signed() + b.to_signed())
+                / (psurd * c.to_signed() + d.to_signed())
         };
         let surd = surd + s.aperiodic_coeffs().first().unwrap().clone().to_signed();
 
         // apply sign
-        if s.is_negative() { -surd } else { surd }
+        if s.is_negative() {
+            -surd
+        } else {
+            surd
+        }
     }
 }
 
 // Reference: http://www.numbertheory.org/courses/MP313/lectures/lecture17/page5.html
 //            http://www.numbertheory.org/gnubc/surd
 // assumes positive surd, parameter `neg` determines the sign of the fraction
-fn quadsurd_to_contfrac<T: QuadraticSurdBase + WithUnsigned<Unsigned = U> + AddAssign, U>
-(a: T, b: T, c: T, r: T, neg: bool) -> ContinuedFraction<U>
-where for<'r> &'r T: RefNum<T> {
+fn quadsurd_to_contfrac<T: QuadraticSurdBase + WithUnsigned<Unsigned = U> + AddAssign, U>(
+    a: T,
+    b: T,
+    c: T,
+    r: T,
+    neg: bool,
+) -> ContinuedFraction<U>
+where
+    for<'r> &'r T: RefNum<T>,
+{
     debug_assert!(!c.is_zero() && r >= T::zero());
     debug_assert!(r.sqrt() * r.sqrt() != r);
 
@@ -372,17 +442,20 @@ where for<'r> &'r T: RefNum<T> {
     let mut d = r * &b * &b;
     let (mut p, mut q) = if b >= T::zero() { (a, c) } else { (-a, -c) };
     if (&d - &p * &p) % &q != T::zero() {
-        d = d * &q * &q; p = p * &q; q = &q * &q;
+        d = d * &q * &q;
+        p = p * &q;
+        q = &q * &q;
     }
 
     // find the reduced form and aperiodic coefficients
     let mut a_coeffs: Vec<T> = Vec::new();
     let rd = d.sqrt();
     while a_coeffs.len() == 0 || // ensure that we have a first coefficient
-          !(p <= rd && rd < (&p+&q) && (&q-&p) <= rd) {
+          !(p <= rd && rd < (&p+&q) && (&q-&p) <= rd)
+    {
         let a = (&rd + &p).div_floor(&q);
-        p = &a*&q - p;
-        q = (&d - &p*&p) / q;
+        p = &a * &q - p;
+        q = (&d - &p * &p) / q;
         a_coeffs.push(a);
     }
 
@@ -391,19 +464,23 @@ where for<'r> &'r T: RefNum<T> {
     let (init_p, init_q) = (p.clone(), q.clone());
     loop {
         let a = (&rd + &p).div_floor(&q);
-        p = &a*&q - p;
-        q = (&d - &p*&p) / q;
+        p = &a * &q - p;
+        q = (&d - &p * &p) / q;
         p_coeffs.push(a);
-        if p == init_p && q == init_q { break }
+        if p == init_p && q == init_q {
+            break;
+        }
     }
 
     ContinuedFraction::new(a_coeffs, p_coeffs, neg)
 }
 
-#[cfg(not(feature="complex"))]
-impl<T: QuadraticSurdBase + WithUnsigned<Unsigned = U> + AddAssign, U>
-From<QuadraticSurd<T>> for ContinuedFraction<U>
-where for<'r> &'r T: RefNum<T> {
+#[cfg(not(feature = "complex"))]
+impl<T: QuadraticSurdBase + WithUnsigned<Unsigned = U> + AddAssign, U> From<QuadraticSurd<T>>
+    for ContinuedFraction<U>
+where
+    for<'r> &'r T: RefNum<T>,
+{
     fn from(s: QuadraticSurd<T>) -> Self {
         if s.is_negative() {
             quadsurd_to_contfrac(-s.a, -s.b, s.c, s.r, true)
@@ -413,27 +490,34 @@ where for<'r> &'r T: RefNum<T> {
     }
 }
 
-#[cfg(feature="complex")]
+#[cfg(feature = "complex")]
 impl<T: Integer> TryFrom<QuadraticSurd<T>> for ContinuedFraction<T> {
     fn try_from(s: QuadraticSurd<T>) -> Self {
         unimplemented!()
     }
 }
 
-impl<T: QuadraticSurdBase + CheckedAdd + AddAssign + WithUnsigned<Unsigned = U>,
-     U: Integer + Clone + CheckedAdd + CheckedMul + WithSigned<Signed = T>>
-     Computable<T> for QuadraticSurd<T>
-where for<'r> &'r T: RefNum<T>{
-    #[cfg(not(feature="complex"))]
+impl<
+        T: QuadraticSurdBase + CheckedAdd + AddAssign + WithUnsigned<Unsigned = U>,
+        U: Integer + Clone + CheckedAdd + CheckedMul + WithSigned<Signed = T>,
+    > Computable<T> for QuadraticSurd<T>
+where
+    for<'r> &'r T: RefNum<T>,
+{
+    #[cfg(not(feature = "complex"))]
     fn approximated(&self, limit: &T) -> Approximation<Ratio<T>> {
         ContinuedFraction::<U>::from(self.clone()).approximated(limit)
     }
 }
 
-impl<T: Integer + fmt::Display> fmt::Display for QuadraticSurd<T>
-{
+impl<T: Integer + fmt::Display> fmt::Display for QuadraticSurd<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match (self.a.is_zero(), self.b.is_zero(), self.b.is_one(), self.c.is_one()) {
+        match (
+            self.a.is_zero(),
+            self.b.is_zero(),
+            self.b.is_one(),
+            self.c.is_one(),
+        ) {
             (true, true, _, _) => write!(f, "0"),
             (true, false, true, true) => write!(f, "√{}", self.r),
             (true, false, false, true) => write!(f, "{}√{}", self.b, self.r),
@@ -444,22 +528,31 @@ impl<T: Integer + fmt::Display> fmt::Display for QuadraticSurd<T>
             (false, false, true, true) => write!(f, "{} + √{}", self.a, self.c),
             (false, false, true, false) => write!(f, "({} + √{})/{}", self.a, self.r, self.c),
             (false, false, false, true) => write!(f, "{} + {}√{}", self.b, self.r, self.c),
-            (false, false, false, false) => write!(f, "({} + {}√{})/{}", self.a, self.b, self.r, self.c),
+            (false, false, false, false) => {
+                write!(f, "({} + {}√{})/{}", self.a, self.b, self.r, self.c)
+            }
         }
     }
 }
 
 // reduce root base for binary operation
 #[inline]
-fn reduce_bin_op<T: QuadraticSurdBase>(lhs: QuadraticSurd<T>, rhs: QuadraticSurd<T>) -> (QuadraticSurd<T>, QuadraticSurd<T>)
-where for<'r> &'r T: RefNum<T> {
+fn reduce_bin_op<T: QuadraticSurdBase>(
+    lhs: QuadraticSurd<T>,
+    rhs: QuadraticSurd<T>,
+) -> (QuadraticSurd<T>, QuadraticSurd<T>)
+where
+    for<'r> &'r T: RefNum<T>,
+{
     let result = if lhs.r > rhs.r {
         let hint = &lhs.r / &rhs.r;
-        (lhs.reduce_base_hinted(hint), rhs)
+        (lhs.reduce_root_hinted(hint), rhs)
     } else if rhs.r > lhs.r {
         let hint = &rhs.r / &lhs.r;
-        (lhs, rhs.reduce_base_hinted(hint))
-    } else { (lhs, rhs) };
+        (lhs, rhs.reduce_root_hinted(hint))
+    } else {
+        (lhs, rhs)
+    };
 
     if result.0.r != result.1.r {
         panic!("the root base should be the same!");
@@ -472,14 +565,20 @@ macro_rules! arith_impl {
     (impl $imp:ident, $method:ident) => {
         // Abstracts a/b `op` c/d = (a*lcm/b `op` c*lcm/d)/lcm where lcm = lcm(b,d)
         impl<T: QuadraticSurdBase> $imp<QuadraticSurd<T>> for QuadraticSurd<T>
-        where for<'r> &'r T: RefNum<T> {
+        where
+            for<'r> &'r T: RefNum<T>,
+        {
             type Output = QuadraticSurd<T>;
             fn $method(self, rhs: QuadraticSurd<T>) -> QuadraticSurd<T> {
                 let (lhs, rhs) = reduce_bin_op(self, rhs);
 
                 if lhs.c == rhs.c {
                     return QuadraticSurd::new(
-                        lhs.a.$method(rhs.a), lhs.b.$method(rhs.b), rhs.c, rhs.r);
+                        lhs.a.$method(rhs.a),
+                        lhs.b.$method(rhs.b),
+                        rhs.c,
+                        rhs.r,
+                    );
                 }
 
                 let lcm = lhs.c.lcm(&rhs.c);
@@ -488,17 +587,20 @@ macro_rules! arith_impl {
                 QuadraticSurd::new(
                     (lhs.a / &lhs_r).$method(rhs.a / &rhs_r),
                     (lhs.b / &lhs_r).$method(rhs.b / &rhs_r),
-                    lcm, rhs.r)
+                    lcm,
+                    rhs.r,
+                )
             }
         }
         // Abstracts the a/b `op` c/1 = (a*1 `op` b*c) / (b*1) = (a `op` b*c) / b pattern
         impl<T: QuadraticSurdBase> $imp<T> for QuadraticSurd<T>
-        where for<'r> &'r T: RefNum<T> {
+        where
+            for<'r> &'r T: RefNum<T>,
+        {
             type Output = QuadraticSurd<T>;
             #[inline]
             fn $method(self, rhs: T) -> QuadraticSurd<T> {
-                QuadraticSurd::new(
-                    self.a.$method(&self.c * rhs), self.b, self.c, self.r)
+                QuadraticSurd::new(self.a.$method(&self.c * rhs), self.b, self.c, self.r)
             }
         }
     };
@@ -508,7 +610,9 @@ arith_impl!(impl Add, add);
 arith_impl!(impl Sub, sub);
 
 impl<T: QuadraticSurdBase> Mul<T> for QuadraticSurd<T>
-where for<'r> &'r T: RefNum<T> {
+where
+    for<'r> &'r T: RefNum<T>,
+{
     type Output = QuadraticSurd<T>;
     #[inline]
     fn mul(self, rhs: T) -> QuadraticSurd<T> {
@@ -519,7 +623,9 @@ where for<'r> &'r T: RefNum<T> {
 }
 
 impl<T: QuadraticSurdBase> Mul<QuadraticSurd<T>> for QuadraticSurd<T>
-where for<'r> &'r T: RefNum<T> {
+where
+    for<'r> &'r T: RefNum<T>,
+{
     type Output = QuadraticSurd<T>;
     #[inline]
     fn mul(self, rhs: QuadraticSurd<T>) -> QuadraticSurd<T> {
@@ -533,12 +639,16 @@ where for<'r> &'r T: RefNum<T> {
         QuadraticSurd::new(
             &la * &ra + &lb * &rb * lhs.r,
             &la * &rb + &lb * &ra,
-            lc * rc, rhs.r)
+            lc * rc,
+            rhs.r,
+        )
     }
 }
 
 impl<T: QuadraticSurdBase> Div<T> for QuadraticSurd<T>
-where for<'r> &'r T: RefNum<T> {
+where
+    for<'r> &'r T: RefNum<T>,
+{
     type Output = QuadraticSurd<T>;
     #[inline]
     fn div(self, rhs: T) -> QuadraticSurd<T> {
@@ -549,7 +659,9 @@ where for<'r> &'r T: RefNum<T> {
 }
 
 impl<T: QuadraticSurdBase> Div<QuadraticSurd<T>> for QuadraticSurd<T>
-where for<'r> &'r T: RefNum<T> {
+where
+    for<'r> &'r T: RefNum<T>,
+{
     type Output = QuadraticSurd<T>;
     #[inline]
     fn div(self, rhs: QuadraticSurd<T>) -> QuadraticSurd<T> {
@@ -558,7 +670,9 @@ where for<'r> &'r T: RefNum<T> {
 }
 
 impl<T: QuadraticSurdBase> Neg for QuadraticSurd<T>
-where for<'r> &'r T: RefNum<T> {
+where
+    for<'r> &'r T: RefNum<T>,
+{
     type Output = QuadraticSurd<T>;
     #[inline]
     fn neg(self) -> QuadraticSurd<T> {
@@ -567,10 +681,17 @@ where for<'r> &'r T: RefNum<T> {
 }
 
 impl<T: QuadraticSurdBase> Zero for QuadraticSurd<T>
-where for<'r> &'r T: RefNum<T> {
+where
+    for<'r> &'r T: RefNum<T>,
+{
     #[inline]
     fn zero() -> Self {
-        QuadraticSurd { a: T::zero(), b: T::zero(), c: T::one(), r: T::zero() }
+        QuadraticSurd {
+            a: T::zero(),
+            b: T::zero(),
+            c: T::one(),
+            r: T::zero(),
+        }
     }
     #[inline]
     fn is_zero(&self) -> bool {
@@ -579,10 +700,17 @@ where for<'r> &'r T: RefNum<T> {
 }
 
 impl<T: QuadraticSurdBase> One for QuadraticSurd<T>
-where for<'r> &'r T: RefNum<T> {
+where
+    for<'r> &'r T: RefNum<T>,
+{
     #[inline]
     fn one() -> Self {
-        QuadraticSurd { a: T::one(), b: T::zero(), c: T::one(), r: T::zero() }
+        QuadraticSurd {
+            a: T::one(),
+            b: T::zero(),
+            c: T::one(),
+            r: T::zero(),
+        }
     }
     #[inline]
     fn is_one(&self) -> bool {
@@ -608,45 +736,60 @@ impl<T: Integer + FromPrimitive> FromPrimitive for QuadraticSurd<T> {
 }
 
 impl<T: QuadraticSurdBase + ToPrimitive> ToPrimitive for QuadraticSurd<T>
-where for<'r> &'r T: RefNum<T> {
+where
+    for<'r> &'r T: RefNum<T>,
+{
     #[inline]
     fn to_i64(&self) -> Option<i64> {
-        if self.r < T::zero() { return None; }
+        if self.r < T::zero() {
+            return None;
+        }
         match self.to_integer() {
             Approximation::Exact(v) => v.to_i64(),
-            Approximation::Approximated(_) => None
+            Approximation::Approximated(_) => None,
         }
     }
 
     #[inline]
     fn to_u64(&self) -> Option<u64> {
-        if self.r < T::zero() { return None; }
+        if self.r < T::zero() {
+            return None;
+        }
         match self.to_integer() {
             Approximation::Exact(v) => v.to_u64(),
-            Approximation::Approximated(_) => None
+            Approximation::Approximated(_) => None,
         }
     }
 
     #[inline]
     fn to_f64(&self) -> Option<f64> {
-        if self.r < T::zero() { return None; }
-        quadsurd_to_f64(self.a.to_i64()?, self.b.to_i64()?, self.c.to_i64()?, self.r.to_i64()?)
+        if self.r < T::zero() {
+            return None;
+        }
+        quadsurd_to_f64(
+            self.a.to_i64()?,
+            self.b.to_i64()?,
+            self.c.to_i64()?,
+            self.r.to_i64()?,
+        )
     }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct FromSqrtError {
-    kind: SqrtErrorKind
+    kind: SqrtErrorKind,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum SqrtErrorKind {
     Overflow,
-    Unrepresentable
+    Unrepresentable,
 }
 
 impl<T: QuadraticSurdBase> FromSqrt<T> for QuadraticSurd<T>
-where for<'r> &'r T: RefNum<T> {
+where
+    for<'r> &'r T: RefNum<T>,
+{
     type Error = FromSqrtError;
 
     #[inline]
@@ -656,14 +799,19 @@ where for<'r> &'r T: RefNum<T> {
             Ok(Self::from(root))
         } else {
             Ok(QuadraticSurd {
-                a: T::zero(), b: T::one(), c: T::one(), r: target
+                a: T::zero(),
+                b: T::one(),
+                c: T::one(),
+                r: target,
             })
         }
     }
 }
 
 impl<T: QuadraticSurdBase + CheckedMul> FromSqrt<Ratio<T>> for QuadraticSurd<T>
-where for<'r> &'r T: RefNum<T> {
+where
+    for<'r> &'r T: RefNum<T>,
+{
     type Error = FromSqrtError;
 
     #[inline]
@@ -675,22 +823,26 @@ where for<'r> &'r T: RefNum<T> {
         let dd = target.denom().checked_mul(target.denom());
         let nd = target.numer().checked_mul(target.denom());
         match (dd, nd) {
-            (Some(new_c), Some(new_r)) => Ok(
-                QuadraticSurd::new(T::zero(), T::one(), new_c, new_r)),
-            (_, _) => Err(FromSqrtError { kind: SqrtErrorKind::Overflow })
+            (Some(new_c), Some(new_r)) => Ok(QuadraticSurd::new(T::zero(), T::one(), new_c, new_r)),
+            (_, _) => Err(FromSqrtError {
+                kind: SqrtErrorKind::Overflow,
+            }),
         }
     }
 }
 
 impl<T: QuadraticSurdBase + CheckedMul> FromSqrt<QuadraticSurd<T>> for QuadraticSurd<T>
-where for<'r> &'r T: RefNum<T> {
+where
+    for<'r> &'r T: RefNum<T>,
+{
     type Error = FromSqrtError;
 
-    #[inline] 
+    #[inline]
     fn from_sqrt(target: QuadraticSurd<T>) -> Result<Self, Self::Error> {
         if target.is_rational() {
             match target.to_rational() {
-                Approximation::Exact(v) => return Self::from_sqrt(v), _ => panic!()
+                Approximation::Exact(v) => return Self::from_sqrt(v),
+                _ => unreachable!(),
             };
         }
 
@@ -704,15 +856,20 @@ where for<'r> &'r T: RefNum<T> {
         let x_y = x / &y;
         let delta2 = &x_y * &x_y - &target.r;
         if delta2.is_negative() {
-            return Err(FromSqrtError { kind: SqrtErrorKind::Unrepresentable });
+            return Err(FromSqrtError {
+                kind: SqrtErrorKind::Unrepresentable,
+            });
         } // TODO: if complex number is enabled, don't report error here
         let sqrt_delta = Self::from_sqrt(delta2)?;
         if !sqrt_delta.is_integer() {
-            return Err(FromSqrtError { kind: SqrtErrorKind::Unrepresentable });
+            return Err(FromSqrtError {
+                kind: SqrtErrorKind::Unrepresentable,
+            });
         }
 
         let delta2 = match sqrt_delta.to_integer() {
-            Approximation::Exact(v) => v, _ => panic!()
+            Approximation::Exact(v) => v,
+            _ => unreachable!(),
         };
         let g = x_y - delta2; // XXX: shall we select another root x_y + delta2?
         let two = T::one() + T::one();
@@ -741,8 +898,14 @@ mod tests {
 
     #[test]
     fn new_split_test() {
-        assert_eq!(QuadraticSurd::new_split(Ratio::new(1, 2), Ratio::new(1, 2), Ratio::from(5)), PHI);
-        assert_eq!(QuadraticSurd::new_split(Ratio::new(-1, 2), Ratio::new(1, 2), Ratio::from(5)), PHI_R);
+        assert_eq!(
+            QuadraticSurd::new_split(Ratio::new(1, 2), Ratio::new(1, 2), Ratio::from(5)),
+            PHI
+        );
+        assert_eq!(
+            QuadraticSurd::new_split(Ratio::new(-1, 2), Ratio::new(1, 2), Ratio::from(5)),
+            PHI_R
+        );
     }
 
     #[test]
@@ -764,12 +927,17 @@ mod tests {
 
     #[test]
     fn from_xxx_test() {
-        assert_eq!(QuadraticSurd::from_sqrt(5).unwrap(), QuadraticSurd::new_raw(0, 1, 1, 5));
+        assert_eq!(
+            QuadraticSurd::from_sqrt(5).unwrap(),
+            QuadraticSurd::new_raw(0, 1, 1, 5)
+        );
         assert!(matches!(QuadraticSurd::from_sqrt(PHI), Err(_)));
-        assert!(matches!(QuadraticSurd::from_sqrt(PHI*PHI), Ok(PHI)));
+        assert!(matches!(QuadraticSurd::from_sqrt(PHI * PHI), Ok(PHI)));
 
-        assert!(matches!(QuadraticSurd::from_root(
-            Ratio::from(1), Ratio::from(-1), Ratio::from(-1)), Some(PHI)));
+        assert!(matches!(
+            QuadraticSurd::from_root(Ratio::from(1), Ratio::from(-1), Ratio::from(-1)),
+            Some(PHI)
+        ));
     }
 
     #[test]
@@ -829,7 +997,7 @@ mod tests {
         let surd_sq2 = QuadraticSurd::new(0, 1, 1, 2);
         assert_eq!(QuadraticSurd::from(cf_sq2.clone()), surd_sq2);
         assert_eq!(ContinuedFraction::from(surd_sq2), cf_sq2);
-        
+
         let cf_n_sq2 = ContinuedFraction::<u32>::new(vec![1], vec![2], true);
         let surd_n_sq2 = QuadraticSurd::new(0, -1, 1, 2);
         assert_eq!(QuadraticSurd::from(cf_n_sq2.clone()), surd_n_sq2);
@@ -839,7 +1007,7 @@ mod tests {
         let surd_sq2_7 = QuadraticSurd::new(0, 1, 7, 2);
         assert_eq!(QuadraticSurd::from(cf_sq2_7.clone()), surd_sq2_7);
         assert_eq!(ContinuedFraction::from(surd_sq2_7), cf_sq2_7);
-        
+
         let cf_10_sq2_7 = ContinuedFraction::<u32>::new(vec![1, 4], vec![2], false);
         let surd_10_sq2_7 = QuadraticSurd::new(10, -1, 7, 2);
         assert_eq!(QuadraticSurd::from(cf_10_sq2_7.clone()), surd_10_sq2_7);

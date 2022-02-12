@@ -1,6 +1,6 @@
+use num_integer::Integer;
+use num_traits::{CheckedAdd, CheckedMul, NumRef, One, RefNum, Zero};
 use std::mem::swap;
-use num_traits::{One, Zero, NumRef, RefNum, CheckedAdd, CheckedMul};
-use num_integer::{Integer};
 
 /// A block on the magic table for homographic operation computation of continued fractions
 /// The method is described in <https://crypto.stanford.edu/pbc/notes/contfrac/compute.html>
@@ -15,25 +15,39 @@ pub struct Block<T> {
 impl<T> Block<T> {
     /// create a block that represents (ax + b) / (cx + d)
     pub fn new(a: T, b: T, c: T, d: T) -> Self {
-        Block { pm1: a, pm2: b, qm1: c, qm2: d }
+        Block {
+            pm1: a,
+            pm2: b,
+            qm1: c,
+            qm2: d,
+        }
     }
 
     /// push the latest convergent to the block
     pub fn update(&mut self, p: T, q: T) {
         swap(&mut self.pm2, &mut self.pm1); // self.pm2 = self.pm1
         swap(&mut self.qm2, &mut self.qm1); // self.qm2 = self.qm1
-        self.pm1 = p; self.qm1 = q;
+        self.pm1 = p;
+        self.qm1 = q;
     }
 }
 
 impl<T: Zero + One> Block<T> {
     /// create a block that represents a identity operation
     pub fn identity() -> Self {
-        Block { pm1: T::one(), pm2: T::zero(), qm1: T::zero(), qm2: T::one() }
+        Block {
+            pm1: T::one(),
+            pm2: T::zero(),
+            qm1: T::zero(),
+            qm2: T::one(),
+        }
     }
 }
 
-impl<T: Integer + NumRef> Block<T> where for <'r> &'r T: RefNum<T> {
+impl<T: Integer + NumRef> Block<T>
+where
+    for<'r> &'r T: RefNum<T>,
+{
     /// move with an coefficient from regular continued fraction
     pub fn rmove(&mut self, a: T) {
         let p = &a * &self.pm1 + &self.pm2;
@@ -46,7 +60,7 @@ impl<T: Integer + NumRef> Block<T> where for <'r> &'r T: RefNum<T> {
         let p = &self.pm1 * &b + &self.pm2 * &a;
         let q = &self.qm1 * b + &self.qm2 * a;
         let g = p.gcd(&q).gcd(&self.pm1).gcd(&self.qm1);
-    
+
         if g > T::one() {
             self.pm1 = &self.pm1 / &g;
             self.qm1 = &self.qm1 / &g;
@@ -63,11 +77,15 @@ impl<T: Integer + NumRef> Block<T> where for <'r> &'r T: RefNum<T> {
         if self.qm1.is_zero() || self.qm2.is_zero() {
             return Err(());
         }
-        
+
         let (im1, rm1) = self.pm1.div_rem(&self.qm1);
         let (im2, rm2) = self.pm2.div_rem(&self.qm2);
 
-        if im1 == im2 { Ok((im1, rm1, rm2)) } else { Err(()) }
+        if im1 == im2 {
+            Ok((im1, rm1, rm2))
+        } else {
+            Err(())
+        }
     }
 
     /// extract the integer part if latests two convergents agrees,
@@ -78,10 +96,11 @@ impl<T: Integer + NumRef> Block<T> where for <'r> &'r T: RefNum<T> {
             Ok((i, rm1, rm2)) => {
                 swap(&mut self.pm1, &mut self.qm1); // self.pm1 = self.qm1
                 swap(&mut self.pm2, &mut self.qm2); // self.pm2 = self.qm2
-                self.qm1 = rm1; self.qm2 = rm2;
+                self.qm1 = rm1;
+                self.qm2 = rm2;
                 Some(i)
-            },
-            Err(_) => None
+            }
+            Err(_) => None,
         }
     }
 
@@ -95,7 +114,7 @@ impl<T: Integer + NumRef> Block<T> where for <'r> &'r T: RefNum<T> {
                 self.pm2 = rm2 * base;
                 Some(i)
             }
-            Err(_) => None
+            Err(_) => None,
         }
     }
 }
@@ -103,18 +122,27 @@ impl<T: Integer + NumRef> Block<T> where for <'r> &'r T: RefNum<T> {
 impl<T: Integer + CheckedAdd + CheckedMul> Block<T> {
     /// Note that update() should be called after checked move
     pub fn checked_rmove(&mut self, a: T) -> Option<(T, T)> {
-        let p = a.checked_mul(&self.pm1).and_then(|v| v.checked_add(&self.pm2))?;
-        let q = a.checked_mul(&self.qm1).and_then(|v| v.checked_add(&self.qm2))?;
+        let p = a
+            .checked_mul(&self.pm1)
+            .and_then(|v| v.checked_add(&self.pm2))?;
+        let q = a
+            .checked_mul(&self.qm1)
+            .and_then(|v| v.checked_add(&self.qm2))?;
         Some((p, q))
     }
 }
 
-impl<T: Integer + CheckedAdd + CheckedMul + NumRef> Block<T> where for <'r> &'r T: RefNum<T> {
+impl<T: Integer + CheckedAdd + CheckedMul + NumRef> Block<T>
+where
+    for<'r> &'r T: RefNum<T>,
+{
     /// Note that update() should be called after checked move
     pub fn checked_gmove(&mut self, a: T, b: T) -> Option<(T, T)> {
-        let bpm1 = b.checked_mul(&self.pm1)?; let apm2 = a.checked_mul(&self.pm2)?;
+        let bpm1 = b.checked_mul(&self.pm1)?;
+        let apm2 = a.checked_mul(&self.pm2)?;
         let p = bpm1.checked_add(&apm2)?;
-        let bqm1 = b.checked_mul(&self.qm1)?; let aqm2 = a.checked_mul(&self.qm2)?;
+        let bqm1 = b.checked_mul(&self.qm1)?;
+        let aqm2 = a.checked_mul(&self.qm2)?;
         let q = bqm1.checked_add(&aqm2)?;
 
         let g = p.gcd(&q).gcd(&self.pm1).gcd(&self.qm1);
@@ -146,8 +174,14 @@ impl<T> DualBlock<T> {
     /// create a block that represents (axy + bx + cy + d)/(exy + fx + gy + h)
     pub fn new(a: T, b: T, c: T, d: T, e: T, f: T, g: T, h: T) -> Self {
         DualBlock {
-            pm11: a, pm12: b, pm21: c, pm22: d,
-            qm11: e, qm12: f, qm21: g, qm22: h
+            pm11: a,
+            pm12: b,
+            pm21: c,
+            pm22: d,
+            qm11: e,
+            qm12: f,
+            qm21: g,
+            qm22: h,
         }
     }
 
@@ -155,26 +189,33 @@ impl<T> DualBlock<T> {
     pub fn update_right(&mut self, p1: T, q1: T, p2: T, q2: T) {
         swap(&mut self.pm21, &mut self.pm11); // self.pm21 = self.pm11
         swap(&mut self.qm21, &mut self.qm11); // self.qm21 = self.qm11
-        self.pm11 = p1; self.qm11 = q1;
+        self.pm11 = p1;
+        self.qm11 = q1;
 
         swap(&mut self.pm22, &mut self.pm12); // self.pm22 = self.pm12
         swap(&mut self.qm22, &mut self.qm12); // self.qm22 = self.qm12
-        self.pm12 = p2; self.qm12 = q2;
+        self.pm12 = p2;
+        self.qm12 = q2;
     }
 
     /// push the latest convergent using y from bottom to the block
     pub fn update_down(&mut self, p1: T, q1: T, p2: T, q2: T) {
         swap(&mut self.pm12, &mut self.pm11); // self.pm12 = self.pm11
         swap(&mut self.qm12, &mut self.qm11); // self.qm12 = self.qm11
-        self.pm11 = p1; self.qm11 = q1;
+        self.pm11 = p1;
+        self.qm11 = q1;
 
         swap(&mut self.pm22, &mut self.pm21); // self.pm22 = self.pm21
         swap(&mut self.qm22, &mut self.qm21); // self.qm22 = self.qm21
-        self.pm21 = p2; self.qm21 = q2;
+        self.pm21 = p2;
+        self.qm21 = q2;
     }
 }
 
-impl<T: Integer + NumRef> DualBlock<T> where for <'r> &'r T: RefNum<T> {
+impl<T: Integer + NumRef> DualBlock<T>
+where
+    for<'r> &'r T: RefNum<T>,
+{
     /// move with an coefficient from the first regular continued fraction (x)
     pub fn rmove_right(&mut self, a: T) {
         let p1 = &a * &self.pm11 + &self.pm21;
@@ -223,13 +264,17 @@ impl<T: Integer + NumRef> DualBlock<T> where for <'r> &'r T: RefNum<T> {
     pub fn reduce_recip(&mut self) -> Result<T, (bool, bool)> {
         match self.check_integer() {
             Ok((i, r11, r12, r21, r22)) => {
-                swap(&mut self.pm11, &mut self.qm11); self.qm11 = r11;
-                swap(&mut self.pm12, &mut self.qm12); self.qm12 = r12;
-                swap(&mut self.pm21, &mut self.qm21); self.qm21 = r21;
-                swap(&mut self.pm22, &mut self.qm22); self.qm22 = r22;
+                swap(&mut self.pm11, &mut self.qm11);
+                self.qm11 = r11;
+                swap(&mut self.pm12, &mut self.qm12);
+                self.qm12 = r12;
+                swap(&mut self.pm21, &mut self.qm21);
+                self.qm21 = r21;
+                swap(&mut self.pm22, &mut self.qm22);
+                self.qm22 = r22;
                 Ok(i)
-            },
-            Err(f) => Err(f)
+            }
+            Err(f) => Err(f),
         }
     }
 }

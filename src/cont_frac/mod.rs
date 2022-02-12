@@ -1,6 +1,6 @@
 //! This module contains the implementations of algorithms related to
 //! regular and generalized continued fraction
-//! 
+//!
 //! References:
 //! - <https://pi.math.cornell.edu/~gautam/ContinuedFractions.pdf>
 //! - <https://crypto.stanford.edu/pbc/notes/contfrac/>
@@ -9,8 +9,8 @@
 //! - <https://github.com/blynn/frac>
 
 mod block;
-mod simple;
 mod general;
+mod simple;
 
+pub use general::{exp, GeneralContinuedFraction};
 pub use simple::{ContinuedFraction, InfiniteContinuedFraction};
-pub use general::{GeneralContinuedFraction, exp};
