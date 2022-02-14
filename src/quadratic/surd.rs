@@ -1,5 +1,5 @@
 use crate::cont_frac::ContinuedFraction;
-use crate::traits::{Approximation, Computable, FromSqrt, WithSigned, WithUnsigned};
+use crate::traits::{Approximation, Computable, FromSqrt, FromSqrtError, WithSigned, WithUnsigned};
 use core::ops::{Add, AddAssign, Div, Mul, Neg, Sub};
 use num_integer::{sqrt, Integer, Roots};
 use num_traits::{
@@ -13,10 +13,10 @@ use num_rational::Ratio;
 pub trait QuadraticSurdBase: Integer + NumRef + Clone + Roots + Signed {}
 impl<T: Integer + NumRef + Clone + Roots + Signed> QuadraticSurdBase for T {}
 
-/// A type representation quadratic surd number `(a + b*sqrt(r)) / c`.
+/// A quadratic number represented as `(a + b*sqrt(r)) / c`.
 /// If the support for complex number is enabled, then this struct can represent
 /// any quadratic integers.
-#[derive(PartialEq, Eq, Hash, Clone, Debug, Copy)] // TODO: implement PartialEq/Eq with binop reduction
+#[derive(PartialEq, Eq, Hash, Clone, Debug, Copy)] // TODO (v0.0.4): implement PartialEq/Eq with binop reduction
 pub struct QuadraticSurd<T> {
     a: T,
     b: T, // zero when reduced if the surd is a rational number
@@ -85,7 +85,7 @@ impl<T: QuadraticSurdBase> QuadraticSurd<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
-    // TODO: add from_complex, to_complex, is_complex
+    // TODO (v0.0.4): add from_complex, to_complex, is_complex
 
     fn reduce(&mut self) {
         if self.c.is_zero() {
@@ -952,24 +952,12 @@ where
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum FromSqrtError {
-    /// A proper representation will requires a integer type with more capacity
-    Overflow,
-    /// The square root is a complex number
-    Complex,
-    /// The square root of the target cannot be represented as a quadratic surd
-    Unrepresentable,
-}
-
 impl<T: QuadraticSurdBase> FromSqrt<T> for QuadraticSurd<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
-    type Error = FromSqrtError;
-
     #[inline]
-    fn from_sqrt(target: T) -> Result<Self, Self::Error> {
+    fn from_sqrt(target: T) -> Result<Self, FromSqrtError> {
         #[cfg(not(feature = "complex"))]
         if target.is_negative() {
             return Err(FromSqrtError::Complex);
@@ -982,10 +970,8 @@ impl<T: QuadraticSurdBase + CheckedMul> FromSqrt<Ratio<T>> for QuadraticSurd<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
-    type Error = FromSqrtError;
-
     #[inline]
-    fn from_sqrt(target: Ratio<T>) -> Result<Self, Self::Error> {
+    fn from_sqrt(target: Ratio<T>) -> Result<Self, FromSqrtError> {
         #[cfg(not(feature = "complex"))]
         if target.is_negative() {
             return Err(FromSqrtError::Complex);
@@ -1005,10 +991,8 @@ impl<T: QuadraticSurdBase + CheckedMul> FromSqrt<QuadraticSurd<T>> for Quadratic
 where
     for<'r> &'r T: RefNum<T>,
 {
-    type Error = FromSqrtError;
-
     #[inline]
-    fn from_sqrt(target: QuadraticSurd<T>) -> Result<Self, Self::Error> {
+    fn from_sqrt(target: QuadraticSurd<T>) -> Result<Self, FromSqrtError> {
         #[cfg(not(feature = "complex"))]
         if target.is_negative() {
             return Err(FromSqrtError::Complex);
@@ -1033,7 +1017,7 @@ where
         if delta2.is_negative() {
             return Err(FromSqrtError::Unrepresentable);
         }
-        // TODO: How to support complex quadratic surd?
+        // TODO: How to support complex quadratic surd here?
         let sqrt_delta = Self::from_sqrt(delta2)?;
         if !sqrt_delta.is_integer() {
             return Err(FromSqrtError::Unrepresentable);

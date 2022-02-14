@@ -3,12 +3,20 @@ use num_rational::Ratio;
 #[cfg(feature = "num-bigint")]
 use num_bigint::{BigInt, BigUint};
 
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum FromSqrtError {
+    /// A proper representation will requires a integer type with more capacity
+    Overflow,
+    /// The square root is a complex number
+    Complex,
+    /// The square root of the target cannot be represented as a quadratic surd
+    Unrepresentable,
+}
+
 /// In case there are multiple solution for square root,
 /// only canonical result will be returned
 pub trait FromSqrt<T>: Sized {
-    type Error;
-
-    fn from_sqrt(t: T) -> Result<Self, Self::Error>;
+    fn from_sqrt(t: T) -> Result<Self, FromSqrtError>;
 }
 
 #[derive(PartialEq, Debug)]

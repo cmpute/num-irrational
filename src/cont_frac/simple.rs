@@ -1,5 +1,5 @@
 use super::block::{Block, DualBlock};
-use crate::quad_surd::{QuadraticSurd, QuadraticSurdBase};
+use crate::quadratic::{QuadraticSurd, QuadraticSurdBase};
 use crate::traits::{Approximation, Computable, WithSigned, WithUnsigned};
 use core::str::FromStr;
 use num_integer::Integer;
