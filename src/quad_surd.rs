@@ -16,7 +16,7 @@ impl<T: Integer + NumRef + Clone + Roots + Signed> QuadraticSurdBase for T {}
 /// A type representation quadratic surd number `(a + b*sqrt(r)) / c`.
 /// If the support for complex number is enabled, then this struct can represent
 /// any quadratic integers.
-#[derive(PartialEq, Eq, Hash, Clone, Debug, Copy)]
+#[derive(PartialEq, Eq, Hash, Clone, Debug, Copy)] // TODO: implement PartialEq/Eq with binop reduction
 pub struct QuadraticSurd<T> {
     a: T,
     b: T, // zero when reduced if the surd is a rational number
@@ -34,20 +34,20 @@ impl<T> QuadraticSurd<T> {
 impl<T: Integer> QuadraticSurd<T> {
     #[inline]
     pub fn is_integer(&self) -> bool {
-        self.c.is_one() && self.b.is_zero()
+        self.r >= T::zero() && self.c.is_one() && self.b.is_zero()
     }
 
     #[inline]
     pub fn is_rational(&self) -> bool {
-        self.b.is_zero() || self.r.is_zero()
+        self.r >= T::zero() && self.b.is_zero() || self.r.is_zero()
     }
 
     #[inline]
-    // TODO: disable this if complex is not supported. rather, panic in the creation
-    // of the surd
     fn panic_if_complex(&self) {
-        if self.r < T::zero() {
-            panic!("it's a complex number!");
+        // only need to check when we allow construction of complex surd number
+        #[cfg(feature = "complex")]
+        if self.r.is_negative() {
+            panic!("operation not supported on complex numbers");
         }
     }
 }
@@ -85,8 +85,7 @@ impl<T: QuadraticSurdBase> QuadraticSurd<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
-    // TODO: it's possible to support r < 0, but special handling is needed.
-    //       And then we can support from_complex, to_complex, is_complex
+    // TODO: add from_complex, to_complex, is_complex
 
     fn reduce(&mut self) {
         if self.c.is_zero() {
@@ -94,11 +93,17 @@ where
         }
 
         // test if the surd is rational
-        let root = sqrt(self.r.clone());
+        let root = sqrt(self.r.abs());
         if &root * &root == self.r {
-            self.a = &self.a + &self.b * root;
-            self.b = T::zero();
-            self.r = T::zero();
+            if self.r.is_negative() {
+                self.a = &self.a + &self.b * root;
+                self.b = T::zero();
+                self.r = T::zero();
+            } else {
+                self.a = T::zero();
+                self.b = &self.b * root;
+                self.r = -T::one();
+            }
         }
 
         // reduce common divisor
@@ -127,7 +132,7 @@ where
 
     fn reduce_root_hinted(self, hint: T) -> Self {
         let hint = hint.abs();
-        if hint.is_zero() || hint.is_one() {
+        if hint.is_zero() || hint.is_one() || hint.is_negative() {
             return self;
         }
 
@@ -251,40 +256,64 @@ where
         self.clone().conj()
     }
 
+    /// Round the surd to zero.
+    /// 
+    /// # Panics
+    /// if the number is complex
     pub fn trunc(self) -> Self {
-        self.panic_if_complex(); // TODO: support complex
+        self.panic_if_complex();
 
-        let br = sqrt(&self.b * &self.b * &self.r);
-        let num = if self.b >= T::zero() {
-            &self.a + br
+        // TODO: ensure the algorithm is correct
+        let bneg = self.b.is_negative();
+        let br = sqrt(&self.b * &self.b * self.r);
+        let num = if bneg {
+            self.a - br
         } else {
-            &self.a - br
+            self.a + br
         };
-        return Self::from(num / &self.c);
+        return Self::from(num / self.c);
     }
 
+    /// `.trunc()` with reference
+    #[inline]
     pub fn trunc_ref(&self) -> Self {
         self.clone().trunc()
     }
 
+    /// Get the fractional part of the surd, ensuring `self.trunc() + self.fract() == self`
+    /// 
+    /// # Panics
+    /// if the number is complex
+    #[inline]
     pub fn fract(self) -> Self {
+        self.panic_if_complex();
+
         let trunc = self.trunc_ref();
         self - trunc
     }
 
+    /// `.fract()` with reference
+    #[inline]
     pub fn fract_ref(&self) -> Self {
         self.clone() - self.trunc_ref()
     }
 
+    /// Get the numerator of the surd
+    #[inline]
     pub fn numer(&self) -> Self {
         Self::new_raw(self.a.clone(), self.b.clone(), T::one(), self.r.clone())
     }
 
-    pub fn denom(&self) -> &T {
-        &self.c
+    /// Get the denumerator of the surd
+    #[inline]
+    pub fn denom(&self) -> Self {
+        Self::from(self.c.clone())
     }
 
     /// Converts to an integer, rounding towards zero
+    /// 
+    /// # Panics
+    /// if the number is complex
     #[inline]
     pub fn to_integer(&self) -> Approximation<T> {
         self.panic_if_complex();
@@ -292,11 +321,14 @@ where
         if self.is_integer() {
             Approximation::Exact(self.a.clone())
         } else {
-            Approximation::Approximated(self.trunc().a)
+            Approximation::Approximated(self.trunc_ref().a)
         }
     }
 
     /// Converts to a rational, rounding square root towards zero
+    /// 
+    /// # Panics
+    /// if the number is complex
     #[inline]
     pub fn to_rational(&self) -> Approximation<Ratio<T>> {
         self.panic_if_complex();
@@ -312,8 +344,12 @@ where
     }
 
     /// Rounds towards minus infinity
-    #[inline]
-    pub fn floor(&self) -> Self {
+    /// 
+    /// # Panics
+    /// if the number is complex
+    pub fn floor(self) -> Self {
+        self.panic_if_complex();
+
         let br = sqrt(&self.b * &self.b * &self.r);
         let num = if self.b >= T::zero() {
             &self.a + br
@@ -328,6 +364,19 @@ where
         return Self::from(num / &self.c);
     }
 
+    /// `.floor()` with reference
+    /// 
+    /// # Panics
+    /// if the number is complex
+    #[inline]
+    pub fn floor_ref(&self) -> Self {
+        self.clone().floor()
+    }
+
+    /// Test if the surd number is positive
+    /// 
+    /// # Panics
+    /// if the number is complex
     pub fn is_positive(&self) -> bool {
         self.panic_if_complex();
 
@@ -349,6 +398,10 @@ where
         }
     }
 
+    /// Test if the surd number is negative
+    /// 
+    /// # Panics
+    /// if the number is complex
     pub fn is_negative(&self) -> bool {
         self.panic_if_complex();
 
@@ -428,7 +481,6 @@ fn quadsurd_to_f64<T: Integer + ToPrimitive>(a: T, b: T, c: T, r: T) -> Option<f
     Some((a.to_f64()? + b.to_f64()? * r.to_f64()?.sqrt()) / c.to_f64()?)
 }
 
-#[cfg(not(feature = "complex"))]
 impl<
         T: Integer + Clone + NumRef + CheckedAdd + CheckedMul + WithSigned<Signed = U>,
         U: QuadraticSurdBase,
@@ -508,12 +560,12 @@ fn quadsurd_to_contfrac<T: QuadraticSurdBase + WithUnsigned<Unsigned = U> + AddA
 where
     for<'r> &'r T: RefNum<T>,
 {
-    debug_assert!(!c.is_zero() && r >= T::zero());
+    debug_assert!(!c.is_zero() && !r.is_negative());
     debug_assert!(r.sqrt() * r.sqrt() != r);
 
     // convert to form (p+sqrt(d))/q where q|d-p^2
     let mut d = r * &b * &b;
-    let (mut p, mut q) = if b >= T::zero() { (a, c) } else { (-a, -c) };
+    let (mut p, mut q) = if b.is_negative() { (-a, -c) } else { (a, c) };
     if (&d - &p * &p) % &q != T::zero() {
         d = d * &q * &q;
         p = p * &q;
@@ -564,9 +616,20 @@ where
 }
 
 #[cfg(feature = "complex")]
-impl<T: Integer> TryFrom<QuadraticSurd<T>> for ContinuedFraction<T> {
-    fn try_from(s: QuadraticSurd<T>) -> Self {
-        unimplemented!()
+impl<T: QuadraticSurdBase + WithUnsigned<Unsigned = U> + AddAssign, U> TryFrom<QuadraticSurd<T>>
+    for ContinuedFraction<T> 
+where
+    for<'r> &'r T: RefNum<T>, {
+    fn try_from(s: QuadraticSurd<T>) -> Result<Self, ()> {
+        if s.r.is_negative() {
+            Err(())
+        } else {
+            if s.is_negative() {
+                Ok(quadsurd_to_contfrac(-s.a, -s.b, s.c, s.r, true))
+            } else {
+                Ok(quadsurd_to_contfrac(s.a, s.b, s.c, s.r, false))
+            }
+        }
     }
 }
 
@@ -580,6 +643,11 @@ where
     #[cfg(not(feature = "complex"))]
     fn approximated(&self, limit: &T) -> Approximation<Ratio<T>> {
         ContinuedFraction::<U>::from(self.clone()).approximated(limit)
+    }
+    
+    #[cfg(feature = "complex")]
+    fn approximated(&self, limit: &T) -> Approximation<Ratio<T>> {
+        ContinuedFraction::<U>::try_from(self.clone()).expect("only real numbers can be approximated by a rational number").approximated(limit)
     }
 }
 
@@ -610,6 +678,7 @@ impl<T: Integer + fmt::Display> fmt::Display for QuadraticSurd<T> {
 
 // reduce root base for binary operation
 #[inline]
+#[cfg(not(feature = "complex"))]
 fn reduce_bin_op<T: QuadraticSurdBase>(
     lhs: QuadraticSurd<T>,
     rhs: QuadraticSurd<T>,
@@ -628,7 +697,37 @@ where
     };
 
     if result.0.r != result.1.r {
-        panic!("the root base should be the same!");
+        panic!("two root bases are not compatible!")
+    }
+
+    result
+}
+
+#[inline]
+#[cfg(feature = "complex")]
+fn reduce_bin_op<T: QuadraticSurdBase>(
+    lhs: QuadraticSurd<T>,
+    rhs: QuadraticSurd<T>,
+) -> (QuadraticSurd<T>, QuadraticSurd<T>)
+where
+    for<'r> &'r T: RefNum<T>,
+{
+    if (lhs.is_negative() && rhs.is_positive()) || (lhs.is_positive() && rhs.is_negative()) {
+        panic!("two root bases are not compatible!")
+    }
+
+    let result = if lhs.r.abs() > rhs.r.abs() {
+        let hint = &lhs.r / &rhs.r;
+        (lhs.reduce_root_hinted(hint), rhs)
+    } else if rhs.r > lhs.r {
+        let hint = &rhs.r / &lhs.r;
+        (lhs, rhs.reduce_root_hinted(hint))
+    } else {
+        (lhs, rhs)
+    };
+
+    if result.0.r != result.1.r {
+        panic!("two root bases are not compatible!")
     }
 
     result
@@ -791,7 +890,7 @@ where
     }
 }
 
-impl<T: Integer + FromPrimitive> FromPrimitive for QuadraticSurd<T> {
+impl<T: Integer + FromPrimitive + Clone> FromPrimitive for QuadraticSurd<T> {
     #[inline]
     fn from_i64(n: i64) -> Option<Self> {
         T::from_i64(n).map(Self::from)
@@ -802,9 +901,14 @@ impl<T: Integer + FromPrimitive> FromPrimitive for QuadraticSurd<T> {
         T::from_u64(n).map(Self::from)
     }
 
+    /// This method depends on [Ratio::from_f64] to convert from a float
     #[inline]
-    fn from_f64(_: f64) -> Option<Self> {
-        None // it makes no sense to convert a float number to a quadratic surd
+    fn from_f64(f: f64) -> Option<Self> {
+        // XXX: this method should be improved when Ratio has a more reasonable API for approximating float
+        let frac = Ratio::<i64>::from_f64(f)?;
+        let (n, d) = frac.into();
+        let frac = Ratio::new(T::from_i64(n)?, T::from_i64(d)?);
+        Some(Self::from(frac))
     }
 }
 
@@ -849,13 +953,12 @@ where
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub struct FromSqrtError { // TODO: make this directly an enum
-    kind: SqrtErrorKind,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq)]
-enum SqrtErrorKind {
+pub enum FromSqrtError {
+    /// A proper representation will requires a integer type with more capacity
     Overflow,
+    /// The square root is a complex number
+    Complex,
+    /// The square root of the target cannot be represented as a quadratic surd
     Unrepresentable,
 }
 
@@ -867,18 +970,11 @@ where
 
     #[inline]
     fn from_sqrt(target: T) -> Result<Self, Self::Error> {
-        // TODO: complex number check
-        let root = sqrt(target.clone());
-        if &root * &root == target {
-            Ok(Self::from(root))
-        } else {
-            Ok(QuadraticSurd {
-                a: T::zero(),
-                b: T::one(),
-                c: T::one(),
-                r: target,
-            })
+        #[cfg(not(feature = "complex"))]
+        if target.is_negative() {
+            return Err(FromSqrtError::Complex);
         }
+        Ok(QuadraticSurd::new(T::zero(), T::one(), T::one(), target))
     }
 }
 
@@ -890,17 +986,17 @@ where
 
     #[inline]
     fn from_sqrt(target: Ratio<T>) -> Result<Self, Self::Error> {
+        #[cfg(not(feature = "complex"))]
+        if target.is_negative() {
+            return Err(FromSqrtError::Complex);
+        }
         if target.is_integer() {
             return Self::from_sqrt(target.to_integer());
         }
 
-        let dd = target.denom().checked_mul(target.denom());
-        let nd = target.numer().checked_mul(target.denom());
-        match (dd, nd) {
-            (Some(new_c), Some(new_r)) => Ok(QuadraticSurd::new(T::zero(), T::one(), new_c, new_r)),
-            (_, _) => Err(FromSqrtError {
-                kind: SqrtErrorKind::Overflow,
-            }),
+        match target.numer().checked_mul(target.denom()) {
+            Some(new_r) => Ok(QuadraticSurd::new(T::zero(), T::one(), target.denom().clone(), new_r)),
+            None => Err(FromSqrtError::Overflow),
         }
     }
 }
@@ -913,6 +1009,11 @@ where
 
     #[inline]
     fn from_sqrt(target: QuadraticSurd<T>) -> Result<Self, Self::Error> {
+        #[cfg(not(feature = "complex"))]
+        if target.is_negative() {
+            return Err(FromSqrtError::Complex);
+        }
+
         if target.is_rational() {
             match target.to_rational() {
                 Approximation::Exact(v) => return Self::from_sqrt(v),
@@ -930,15 +1031,12 @@ where
         let x_y = x / &y;
         let delta2 = &x_y * &x_y - &target.r;
         if delta2.is_negative() {
-            return Err(FromSqrtError {
-                kind: SqrtErrorKind::Unrepresentable,
-            });
-        } // TODO: if complex number is enabled, don't report error here
+            return Err(FromSqrtError::Unrepresentable);
+        }
+        // TODO: How to support complex quadratic surd?
         let sqrt_delta = Self::from_sqrt(delta2)?;
         if !sqrt_delta.is_integer() {
-            return Err(FromSqrtError {
-                kind: SqrtErrorKind::Unrepresentable,
-            });
+            return Err(FromSqrtError::Unrepresentable);
         }
 
         let delta2 = match sqrt_delta.to_integer() {
@@ -1041,8 +1139,8 @@ mod tests {
         assert_eq!(N_PHI.recip(), N_PHI_R);
 
         // conjugate
-        assert_eq!(PHI.conjugate(), N_PHI_R);
-        assert_eq!(PHI_R.conjugate(), N_PHI);
+        assert_eq!(PHI.conj(), N_PHI_R);
+        assert_eq!(PHI_R.conj(), N_PHI);
 
         // mul
         assert!((PHI * PHI_R).is_one());
