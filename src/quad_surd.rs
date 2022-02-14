@@ -7,15 +7,13 @@ use num_traits::{
 };
 use std::fmt;
 
-#[cfg(feature = "num-bigint")]
-use num_bigint::BigInt;
 use num_rational::Ratio;
 
 /// A helper trait to define valid type that can be used for QuadraticSurd
 pub trait QuadraticSurdBase: Integer + NumRef + Clone + Roots + Signed {}
 impl<T: Integer + NumRef + Clone + Roots + Signed> QuadraticSurdBase for T {}
 
-/// A type representation quadratic surd number (a + b*sqrt(r)) / c.
+/// A type representation quadratic surd number `(a + b*sqrt(r)) / c`.
 /// If the support for complex number is enabled, then this struct can represent
 /// any quadratic integers.
 #[derive(PartialEq, Eq, Hash, Clone, Debug, Copy)]
@@ -89,11 +87,10 @@ where
 {
     // TODO: it's possible to support r < 0, but special handling is needed.
     //       And then we can support from_complex, to_complex, is_complex
-    //       maybe enable this only if num-complex is enabled
 
     fn reduce(&mut self) {
         if self.c.is_zero() {
-            panic!("denominator == 0");
+            panic!("denominator is zero");
         }
 
         // test if the surd is rational
@@ -148,19 +145,32 @@ where
         self
     }
 
+    /// Create a surd represented as `(a + b*sqrt(r)) / c` where `a`, `b`, `c`, `r` are integers.
+    /// 
+    /// # Panics
+    /// If `c` is zero or `r` is negative when the `complex` feature is not enabled.
     #[inline]
     pub fn new(a: T, b: T, c: T, r: T) -> Self {
-        assert!(r >= T::zero());
+        #[cfg(not(feature = "complex"))]
+        if r.is_negative() {
+            panic!("Negative root is not supported without the `complex` feature");
+        }
 
         let mut ret = QuadraticSurd::new_raw(a, b, c, r);
         ret.reduce();
         ret
     }
 
-    /// Create a surd with format `a + b sqrt(r)` where a, b, r are rationals
+    /// Create a surd represented as `a + b sqrt(r)` where a, b, r are rationals.
+    /// 
+    /// # Panics
+    /// If `r` is negative when the `complex` feature is not enabled.
     #[inline]
-    pub fn new_split(a: Ratio<T>, b: Ratio<T>, r: Ratio<T>) -> Self {
-        assert!(!r.is_negative());
+    pub fn from_rational(a: Ratio<T>, b: Ratio<T>, r: Ratio<T>) -> Self {
+        #[cfg(not(feature = "complex"))]
+        if r.is_negative() {
+            panic!("Negative root is not supported without the `complex` feature");
+        }
 
         let surd_r = r.numer() * r.denom();
         let new_b_denom = b.denom() * r.denom();
@@ -172,11 +182,11 @@ where
         ret
     }
 
-    /// Get the root of a quadratic equation `ax^2 + bx + c` with rational coefficients
+    /// Get the root of a quadratic equation `ax^2 + bx + c` with rational coefficients.
     /// This method only returns one of the root `(b + sqrt(b^2 - 4ac)) / 2a`, use `conjugate()` for the other root
-    // TODO (v0.1): rename as from_equation
+    /// If there are only complex solutions, then `None` will be returned if the `complex` feature is not enabled.
     #[inline]
-    pub fn from_root(a: Ratio<T>, b: Ratio<T>, c: Ratio<T>) -> Option<Self> {
+    pub fn from_equation(a: Ratio<T>, b: Ratio<T>, c: Ratio<T>) -> Option<Self> {
         // degraded cases
         if a.is_zero() {
             if b.is_zero() {
@@ -188,12 +198,14 @@ where
         let two = T::one() + T::one();
         let four = &two * &two;
         let delta = &b * &b - Ratio::from(four) * &a * c;
+        
+        #[cfg(not(feature = "complex"))]
         if delta.is_negative() {
             return None;
-        } // TODO: skip this with complex number support
+        }
 
         let aa = Ratio::from(two) * a;
-        Some(Self::new_split(-b * aa.recip(), aa.recip(), delta))
+        Some(Self::from_rational(-b * aa.recip(), aa.recip(), delta))
     }
 
     /// Returns the reciprocal of the surd
@@ -204,14 +216,27 @@ where
         QuadraticSurd::new(
             -(&self.c * self.a),
             self.c * self.b,
-            &bb * &self.r - aa,
+            bb * &self.r - aa,
             self.r,
+        )
+    }
+
+    /// `.recip()` with reference
+    #[inline]
+    pub fn recip_ref(&self) -> Self {
+        let aa = &self.a * &self.a;
+        let bb = &self.b * &self.b;
+        QuadraticSurd::new(
+            -(&self.c * &self.a),
+            &self.c * &self.b,
+            bb * &self.r - aa,
+            self.r.clone(),
         )
     }
 
     /// Return the conjugate of the surd, i.e. (a - b*sqrt(r)) / c
     #[inline]
-    pub fn conjugate(self) -> Self {
+    pub fn conj(self) -> Self {
         QuadraticSurd {
             a: self.a,
             b: -self.b,
@@ -220,8 +245,14 @@ where
         }
     }
 
-    pub fn trunc(&self) -> Self {
-        self.panic_if_complex();
+    /// `.conj()` with reference
+    #[inline]
+    pub fn conj_ref(&self) -> Self {
+        self.clone().conj()
+    }
+
+    pub fn trunc(self) -> Self {
+        self.panic_if_complex(); // TODO: support complex
 
         let br = sqrt(&self.b * &self.b * &self.r);
         let num = if self.b >= T::zero() {
@@ -232,10 +263,25 @@ where
         return Self::from(num / &self.c);
     }
 
-    pub fn fract(&self) -> Self {
-        self.panic_if_complex();
+    pub fn trunc_ref(&self) -> Self {
+        self.clone().trunc()
+    }
 
-        return self.clone() - self.trunc();
+    pub fn fract(self) -> Self {
+        let trunc = self.trunc_ref();
+        self - trunc
+    }
+
+    pub fn fract_ref(&self) -> Self {
+        self.clone() - self.trunc_ref()
+    }
+
+    pub fn numer(&self) -> Self {
+        Self::new_raw(self.a.clone(), self.b.clone(), T::one(), self.r.clone())
+    }
+
+    pub fn denom(&self) -> &T {
+        &self.c
     }
 
     /// Converts to an integer, rounding towards zero
@@ -325,11 +371,22 @@ where
     }
 }
 
+impl<T> Into<(T, T, T, T)> for QuadraticSurd<T> {
+    /// Deconstruct the quadratic surd `(a + b*sqrt(r)) / c` into tuple `(a,b,c,r)`
+    fn into(self) -> (T, T, T, T) {
+        (self.a, self.b, self.c, self.r)
+    }
+}
+
 impl<T: QuadraticSurdBase + FromPrimitive + CheckedMul> QuadraticSurd<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
-    /// Try to eliminate factors of root that is a squared number
+    /// Try to eliminate factors of root that is a squared number.
+    /// 
+    /// It will only try trivial division for several small primes.
+    /// For a quadratic surd with large root, consider deconstructing
+    /// the surd by `.into()` and then reduce yourself.
     fn reduce_root(&mut self) {
         const SMALL_PRIMES: [u8; 54] = [
             2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97,
@@ -400,7 +457,7 @@ where
             d = new_d;
         }
 
-        let psurd = Self::from_root(
+        let psurd = Self::from_equation(
             Ratio::from(c.to_signed()),
             Ratio::from(d.to_signed() - a.to_signed()),
             Ratio::from(-b.to_signed()),
@@ -792,7 +849,7 @@ where
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub struct FromSqrtError {
+pub struct FromSqrtError { // TODO: make this directly an enum
     kind: SqrtErrorKind,
 }
 
@@ -810,6 +867,7 @@ where
 
     #[inline]
     fn from_sqrt(target: T) -> Result<Self, Self::Error> {
+        // TODO: complex number check
         let root = sqrt(target.clone());
         if &root * &root == target {
             Ok(Self::from(root))
@@ -913,13 +971,13 @@ mod tests {
     pub const PHI45_R: QuadraticSurd<i32> = QuadraticSurd::new_raw(-3, 1, 6, 45); // non-reduced version of PHI_R
 
     #[test]
-    fn new_split_test() {
+    fn from_rational_test() {
         assert_eq!(
-            QuadraticSurd::new_split(Ratio::new(1, 2), Ratio::new(1, 2), Ratio::from(5)),
+            QuadraticSurd::from_rational(Ratio::new(1, 2), Ratio::new(1, 2), Ratio::from(5)),
             PHI
         );
         assert_eq!(
-            QuadraticSurd::new_split(Ratio::new(-1, 2), Ratio::new(1, 2), Ratio::from(5)),
+            QuadraticSurd::from_rational(Ratio::new(-1, 2), Ratio::new(1, 2), Ratio::from(5)),
             PHI_R
         );
     }
@@ -951,7 +1009,7 @@ mod tests {
         assert!(matches!(QuadraticSurd::from_sqrt(PHI * PHI), Ok(PHI)));
 
         assert!(matches!(
-            QuadraticSurd::from_root(Ratio::from(1), Ratio::from(-1), Ratio::from(-1)),
+            QuadraticSurd::from_equation(Ratio::from(1), Ratio::from(-1), Ratio::from(-1)),
             Some(PHI)
         ));
     }
