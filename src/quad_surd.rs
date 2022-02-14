@@ -96,13 +96,13 @@ where
         let root = sqrt(self.r.abs());
         if &root * &root == self.r {
             if self.r.is_negative() {
-                self.a = &self.a + &self.b * root;
-                self.b = T::zero();
-                self.r = T::zero();
-            } else {
                 self.a = T::zero();
                 self.b = &self.b * root;
                 self.r = -T::one();
+            } else {
+                self.a = &self.a + &self.b * root;
+                self.b = T::zero();
+                self.r = T::zero();
             }
         }
 
