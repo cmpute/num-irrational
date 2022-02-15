@@ -7,8 +7,8 @@
 //! - <http://www.numbertheory.org/continued_fractions.html>
 //! - <http://www.numbertheory.org/php/cfrac.html>
 //! - <https://github.com/blynn/frac>
-//! 
-// TODO: support the hurwitz complex continued fraction 
+//!
+// TODO: support the hurwitz complex continued fraction
 
 mod block;
 mod general;

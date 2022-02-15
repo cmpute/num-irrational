@@ -1,8 +1,8 @@
 use super::block::{Block, DualBlock};
 use crate::quadratic::{QuadraticSurd, QuadraticSurdBase};
 use crate::traits::{Approximation, Computable, WithSigned, WithUnsigned};
-use core::str::FromStr;
 use core::convert::TryFrom;
+use core::str::FromStr;
 use num_integer::Integer;
 use num_rational::Ratio;
 use num_traits::{CheckedAdd, CheckedMul, Num, NumRef, One, RefNum, Signed, Zero};
