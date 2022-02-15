@@ -48,6 +48,12 @@ impl<T: Integer> QuadraticSurd<T> {
         self.b.is_zero() || self.r.is_zero()
     }
 
+    #[inline]
+    #[cfg(feature = "complex")]
+    pub fn is_complex(&self) -> bool {
+        self.r < T::zero()
+    }
+
     /// Determine if the quadratic number has no real part (i.e. a = 0, b != 0)
     #[inline]
     pub fn is_pure(&self) -> bool {
@@ -97,8 +103,6 @@ impl<T: QuadraticSurdBase> QuadraticSurd<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
-    // TODO (v0.0.5): add from_complex, to_complex, is_complex
-
     fn reduce(&mut self) {
         if self.c.is_zero() {
             panic!("denominator is zero");
@@ -184,7 +188,7 @@ where
     /// # Panics
     /// If `r` is negative when the `complex` feature is not enabled.
     #[inline]
-    pub fn from_rational(a: Ratio<T>, b: Ratio<T>, r: Ratio<T>) -> Self {
+    pub fn from_rationals(a: Ratio<T>, b: Ratio<T>, r: Ratio<T>) -> Self {
         #[cfg(not(feature = "complex"))]
         if r.is_negative() {
             panic!("Negative root is not supported without the `complex` feature");
@@ -223,7 +227,7 @@ where
         }
 
         let aa = Ratio::from(two) * a;
-        Some(Self::from_rational(-b * aa.recip(), aa.recip(), delta))
+        Some(Self::from_rationals(-b * aa.recip(), aa.recip(), delta))
     }
 
     /// Returns the reciprocal of the surd
@@ -502,10 +506,6 @@ where
         result.reduce();
         result
     }
-}
-
-fn quadsurd_to_f64<T: Integer + ToPrimitive>(a: T, b: T, c: T, r: T) -> Option<f64> {
-    Some((a.to_f64()? + b.to_f64()? * r.to_f64()?.sqrt()) / c.to_f64()?)
 }
 
 impl<
@@ -840,7 +840,7 @@ where
     }
 }
 
-// TODO (v0.1): support ops with Ratio
+// TODO (v0.0.5): support ops with Ratio
 
 impl<T: QuadraticSurdBase> Mul<QuadraticSurd<T>> for QuadraticSurd<T>
 where
@@ -849,7 +849,7 @@ where
     type Output = QuadraticSurd<T>;
     #[inline]
     fn mul(self, rhs: QuadraticSurd<T>) -> QuadraticSurd<T> {
-        // TODO: shortcuts if rhs is integer, rational
+        // TODO (v0.0.5): shortcuts if rhs is integer, rational
         if self.is_pure() && rhs.is_pure() {
             return Self::new(T::zero(), self.b * rhs.b, self.c * rhs.c, self.r * rhs.r);
         }
@@ -995,12 +995,36 @@ where
         if self.r < T::zero() {
             return None;
         }
-        quadsurd_to_f64(
-            self.a.to_i64()?,
-            self.b.to_i64()?,
-            self.c.to_i64()?,
-            self.r.to_i64()?,
-        )
+
+        Some((self.a.to_f64()? + self.b.to_f64()? * self.r.to_f64()?.sqrt()) / self.c.to_f64()?)
+    }
+}
+
+#[cfg(feature = "num-complex")]
+mod complex {
+    use super::*;
+    use num_complex::{Complex32, Complex64};
+
+    impl<T: QuadraticSurdBase + ToPrimitive> QuadraticSurd<T>
+    where
+        for<'r> &'r T: RefNum<T>,
+    {
+        pub fn to_complex64(&self) -> Option<Complex64> {
+            if self.r < T::zero() {
+                let c = self.c.to_f64()?;
+                let re = self.a.to_f64()? / c;
+                let im = self.b.to_f64()? * self.r.to_f64()?.abs().sqrt() / c;
+                Some(Complex64::new(re as f64, im as f64))
+            } else {
+                let re = self.to_f64()?;
+                Some(Complex64::new(re as f64, 0f64))
+            }
+        }
+
+        pub fn to_complex32(&self) -> Option<Complex32> {
+            let complex = self.to_complex64()?;
+            Some(Complex32::new(complex.re.to_f32()?, complex.im.to_f32()?))
+        }
     }
 }
 
@@ -1099,6 +1123,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use core::convert::TryFrom;
 
     pub const PHI: QuadraticSurd<i32> = QuadraticSurd::new_raw(1, 1, 2, 5); // 1.618
     pub const PHI_R: QuadraticSurd<i32> = QuadraticSurd::new_raw(-1, 1, 2, 5); // 0.618
@@ -1110,13 +1135,13 @@ mod tests {
     pub const PHI45_R: QuadraticSurd<i32> = QuadraticSurd::new_raw(-3, 1, 6, 45); // non-reduced version of PHI_R
 
     #[test]
-    fn from_rational_test() {
+    fn from_rationals_test() {
         assert_eq!(
-            QuadraticSurd::from_rational(Ratio::new(1, 2), Ratio::new(1, 2), Ratio::from(5)),
+            QuadraticSurd::from_rationals(Ratio::new(1, 2), Ratio::new(1, 2), Ratio::from(5)),
             PHI
         );
         assert_eq!(
-            QuadraticSurd::from_rational(Ratio::new(-1, 2), Ratio::new(1, 2), Ratio::from(5)),
+            QuadraticSurd::from_rationals(Ratio::new(-1, 2), Ratio::new(1, 2), Ratio::from(5)),
             PHI_R
         );
     }

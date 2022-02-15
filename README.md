@@ -23,5 +23,5 @@ println!("Continued Fraction: {}", sq2_fraction); // [1; (2)]
 ```
 
 # Roadmap
-- v0.1: documentation
-- v0.1: support complex number for QuadSurd
+- v0.1: documentation (docstring, examples and readme)
+- v0.1: full support of complex number for QuadSurd

@@ -31,3 +31,6 @@ default-features = false
 
 [features]
 complex = []
+
+[package.metadata.docs.rs]
+all-features = true

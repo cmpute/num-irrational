@@ -672,7 +672,7 @@ impl<T> Add<Ratio<T>> for ContinuedFraction<T> {
     type Output = Self;
 
     fn add(self, rhs: Ratio<T>) -> Self {
-        unimplemented!() // TODO: implement by converting to ratio or quadratic surd
+        unimplemented!() // TODO (v0.1): implement by converting to ratio or quadratic surd
     }
 }
 
