@@ -1,3 +1,6 @@
+//! Data structures and algorithms implementations related to
+//! quadratic numbers (roots of quadratic equation).
+
 mod integer;
 mod surd;
 

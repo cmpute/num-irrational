@@ -1,4 +1,12 @@
-//! This module contains several predefined irrational math constants
+//! Predefined irrational math constants
+//! 
+//! All contants will have some of the following methods
+//! - `value()`: The value of the constant represented in the highest precision primitive float (f64)
+//! - `cfrac()`: The value of the constant represented in [InfiniteContinuedFraction]
+//! - `gfrac()`: The value of the constant represented in general continued fraction
+//! 
+//! Note that to use these methods, you have to create a instance of the constant first.
+//! 
 
 use super::cont_frac::InfiniteContinuedFraction;
 use num_integer::Integer;
@@ -24,13 +32,19 @@ pub struct Gamma {}
 pub struct G {}
 
 impl E {
+    pub const fn value(&self) -> f64 {
+        2.71828182845904523536028747
+    }
+
     pub fn cfrac<T: Num + NumRef + Clone>(&self) -> InfiniteContinuedFraction<ECoefficients<T>> {
         InfiniteContinuedFraction(ECoefficients { i: T::zero(), m: 0 })
     }
 }
 
 #[derive(Debug, Clone, Copy)]
-/// The sequence used here is the famous pattern, `e`=[2;1,2,1,1,4,1...]
+/// Continued fraction coefficients of e
+/// 
+/// The sequence used here is the famous pattern, `e=[2;1,2,1,1,4,1...]`
 pub struct ECoefficients<T> {
     i: T,
     m: u8,
@@ -62,6 +76,10 @@ impl<T: Num + NumRef + Clone> Iterator for ECoefficients<T> {
 }
 
 impl Pi {
+    pub const fn value() -> f64 {
+        3.141592653589793238462643383
+    }
+
     /// pi has only generalized continued fraction representation
     pub fn gfrac<T: Num>(&self) -> PiCoefficients<T> {
         PiCoefficients {
@@ -71,7 +89,9 @@ impl Pi {
     }
 }
 
-/// The sequence used here is pi = 4/(1+1^2/(3+2^2/(5+..))). The first convergent is 0, but
+/// Continued fraction coefficients of π
+/// 
+/// The sequence used here is `π = 4/(1+1^2/(3+2^2/(5+..)))`. The first convergent is 0, but
 /// it will converge faster later on.
 /// Reference: <https://en.wikipedia.org/wiki/Generalized_continued_fraction#%CF%80>
 #[derive(Debug, Clone, Copy)]
@@ -122,6 +142,10 @@ impl Gamma {
     }
 }
 
+/// Continued fraction coefficients of γ
+/// 
+/// Reference: Pilehrood, K. H., & Pilehrood, T. H. (2013). On a continued fraction expansion
+/// for Eulerʼs constant. Journal of Number Theory, 133(2), 769-786.
 #[derive(Debug, Clone, Copy)]
 pub struct GammaCoefficients<T> {
     n: usize,
@@ -138,8 +162,6 @@ where
 {
     type Item = (T, T);
 
-    /// Reference: Pilehrood, K. H., & Pilehrood, T. H. (2013). On a continued fraction expansion
-    /// for Eulerʼs constant. Journal of Number Theory, 133(2), 769-786.
     fn next(&mut self) -> Option<Self::Item> {
         match self.n {
             0 => {

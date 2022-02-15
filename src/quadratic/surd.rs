@@ -38,23 +38,26 @@ impl<T> QuadraticSurd<T> {
 }
 
 impl<T: Integer> QuadraticSurd<T> {
+    /// Determine if the surd is an integer
     #[inline]
     pub fn is_integer(&self) -> bool {
         self.r >= T::zero() && self.c.is_one() && self.b.is_zero()
     }
 
+    /// Determine if the surd is a rational number
     #[inline]
     pub fn is_rational(&self) -> bool {
         self.b.is_zero() || self.r.is_zero()
     }
 
+    /// Determine if the surd is a complex number
     #[inline]
     #[cfg(feature = "complex")]
     pub fn is_complex(&self) -> bool {
         self.r < T::zero()
     }
 
-    /// Determine if the quadratic number has no real part (i.e. a = 0, b != 0)
+    /// Determine if the quadratic number has no rational part (i.e. a = 0, b != 0)
     #[inline]
     pub fn is_pure(&self) -> bool {
         self.a.is_zero() && !self.b.is_zero()
@@ -103,6 +106,7 @@ impl<T: QuadraticSurdBase> QuadraticSurd<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
+    // Simplify the surd into normalized form
     fn reduce(&mut self) {
         if self.c.is_zero() {
             panic!("denominator is zero");
@@ -788,6 +792,21 @@ macro_rules! arith_impl {
         {
             type Output = QuadraticSurd<T>;
             fn $method(self, rhs: QuadraticSurd<T>) -> QuadraticSurd<T> {
+                // shortcuts for trivial cases
+                if self.is_integer() {
+                    return rhs.$method(self.a);
+                }
+                if rhs.is_integer() {
+                    return self.$method(rhs.a);
+                }
+                if self.is_rational() {
+                    return rhs.$method(Ratio::<T>::new(self.a, self.c));
+                }
+                if rhs.is_rational() {
+                    return self.$method(Ratio::<T>::new(rhs.a, rhs.c));
+                }
+
+                // ensure that two operands have compatible bases
                 let (lhs, rhs) = reduce_bin_op_unwrap(self, rhs);
 
                 if lhs.c == rhs.c {
@@ -803,13 +822,38 @@ macro_rules! arith_impl {
                 let lhs_r = &lcm / lhs.c;
                 let rhs_r = &lcm / rhs.c;
                 QuadraticSurd::new(
-                    (lhs.a / &lhs_r).$method(rhs.a / &rhs_r),
-                    (lhs.b / &lhs_r).$method(rhs.b / &rhs_r),
+                    (lhs.a * &lhs_r).$method(rhs.a * &rhs_r),
+                    (lhs.b * lhs_r).$method(rhs.b * rhs_r),
                     lcm,
                     rhs.r,
                 )
             }
         }
+
+        impl<T: QuadraticSurdBase> $imp<Ratio<T>> for QuadraticSurd<T>
+        where
+            for<'r> &'r T: RefNum<T>,
+        {
+            type Output = QuadraticSurd<T>;
+
+            #[inline]
+            fn $method(self, rhs: Ratio<T>) -> QuadraticSurd<T> {
+                if &self.c == rhs.denom() {
+                    return QuadraticSurd::new(self.a.$method(rhs.numer()), self.b, self.c, self.r);
+                }
+
+                let lcm = self.c.lcm(&rhs.denom());
+                let lhs_r = &lcm / self.c;
+                let rhs_r = &lcm / rhs.denom();
+                QuadraticSurd::new(
+                    (self.a * lhs_r).$method(rhs.numer() * rhs_r),
+                    self.b,
+                    lcm,
+                    self.r,
+                )
+            }
+        }
+
         // Abstracts the a/b `op` c/1 = (a*1 `op` b*c) / (b*1) = (a `op` b*c) / b pattern
         impl<T: QuadraticSurdBase> $imp<T> for QuadraticSurd<T>
         where
@@ -840,7 +884,26 @@ where
     }
 }
 
-// TODO (v0.0.5): support ops with Ratio
+impl<T: QuadraticSurdBase> Mul<Ratio<T>> for QuadraticSurd<T>
+where
+    for<'r> &'r T: RefNum<T>,
+{
+    type Output = QuadraticSurd<T>;
+    #[inline]
+    fn mul(self, rhs: Ratio<T>) -> QuadraticSurd<T> {
+        let (rhs_n, rhs_d) = rhs.into();
+        let ab_gcd = self.a.gcd(&self.b).gcd(&rhs_d);
+        let c_gcd = self.c.gcd(&rhs_n);
+        let numer_rem = rhs_n / &c_gcd;
+        let denum_rem = rhs_d / &ab_gcd;
+        QuadraticSurd::new(
+            self.a / &ab_gcd * &numer_rem,
+            self.b / ab_gcd * numer_rem,
+            self.c / c_gcd * denum_rem,
+            self.r,
+        )
+    }
+}
 
 impl<T: QuadraticSurdBase> Mul<QuadraticSurd<T>> for QuadraticSurd<T>
 where
@@ -849,10 +912,24 @@ where
     type Output = QuadraticSurd<T>;
     #[inline]
     fn mul(self, rhs: QuadraticSurd<T>) -> QuadraticSurd<T> {
-        // TODO (v0.0.5): shortcuts if rhs is integer, rational
+        // shortcuts for trivial cases
+        if self.is_integer() {
+            return rhs * self.a;
+        }
+        if rhs.is_integer() {
+            return self * rhs.a;
+        }
+        if self.is_rational() {
+            return rhs * Ratio::<T>::new(self.a, self.c);
+        }
+        if rhs.is_rational() {
+            return self * Ratio::<T>::new(rhs.a, rhs.c);
+        }
         if self.is_pure() && rhs.is_pure() {
             return Self::new(T::zero(), self.b * rhs.b, self.c * rhs.c, self.r * rhs.r);
         }
+
+        // ensure that two operands have compatible bases
         let (lhs, rhs) = reduce_bin_op_unwrap(self, rhs);
 
         let gcd_lr = (&lhs.a).gcd(&lhs.b).gcd(&rhs.c); // gcd between lhs numerator and rhs denominator
@@ -879,6 +956,27 @@ where
         let gcd = self.a.gcd(&self.b).gcd(&rhs);
         let rem = rhs / &gcd;
         QuadraticSurd::new(self.a / &gcd, self.b / &gcd, self.c * rem, self.r)
+    }
+}
+
+impl<T: QuadraticSurdBase> Div<Ratio<T>> for QuadraticSurd<T>
+where
+    for<'r> &'r T: RefNum<T>,
+{
+    type Output = QuadraticSurd<T>;
+    #[inline]
+    fn div(self, rhs: Ratio<T>) -> QuadraticSurd<T> {
+        let (rhs_n, rhs_d) = rhs.into();
+        let ab_gcd = self.a.gcd(&self.b).gcd(&rhs_d);
+        let c_gcd = self.c.gcd(&rhs_n);
+        let denom_rem = rhs_d / &ab_gcd;
+        let numer_rem = rhs_n / &c_gcd;
+        QuadraticSurd::new(
+            self.a / &ab_gcd * &numer_rem,
+            self.b / ab_gcd * numer_rem,
+            self.c / &c_gcd * denom_rem,
+            self.r,
+        )
     }
 }
 

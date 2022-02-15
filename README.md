@@ -15,7 +15,7 @@ use num_irrational::{QuadraticSurd, ContinuedFraction};
 let sq2 = QuadraticSurd::from_sqrt(2);
 println!("Square root of 2: {}", sq2); // √2
 
-let sq2_approx = sq2.approx_rational(100);
+let sq2_approx = sq2.approximated(100);
 println!("Approximation under 100: {}", sq2_approx); // 99/70
 
 let sq2_fraction = ContinuedFraction::from(sq2);
@@ -24,4 +24,5 @@ println!("Continued Fraction: {}", sq2_fraction); // [1; (2)]
 
 # Roadmap
 - v0.1: documentation (docstring, examples and readme)
+- v0.1: add tests for QuadSurd
 - v0.1: full support of complex number for QuadSurd

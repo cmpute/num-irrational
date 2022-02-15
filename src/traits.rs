@@ -3,6 +3,7 @@ use num_rational::Ratio;
 #[cfg(feature = "num-bigint")]
 use num_bigint::{BigInt, BigUint};
 
+/// Represents a possible error occured calling [FromSqrt]
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum FromSqrtError {
     /// A proper representation will requires a integer type with more capacity
@@ -13,21 +14,34 @@ pub enum FromSqrtError {
     Unrepresentable,
 }
 
+/// Create a number instance from the square root of another number.
+///
 /// In case there are multiple solution for square root,
 /// only canonical result will be returned
 pub trait FromSqrt<T>: Sized {
     fn from_sqrt(t: T) -> Result<Self, FromSqrtError>;
 }
 
+/// Represents a number conversion with probably exact value.
 #[derive(PartialEq, Debug)]
 pub enum Approximation<T> {
     Approximated(T),
     Exact(T),
 }
 
+impl<T> Approximation<T> {
+    /// Get the computed value regardless of whether it's exact
+    pub fn value(self) -> T {
+        match self {
+            Approximation::Approximated(v) => v,
+            Approximation::Exact(v) => v,
+        }
+    }
+}
+
 // TODO: backport into num-traits (https://github.com/rust-num/num-rational/issues/100)
 /// This trait represents a real number that is computable.
-/// See <https://en.wikipedia.org/wiki/Computable_number>
+/// See [Wiki](https://en.wikipedia.org/wiki/Computable_number)
 pub trait Computable<T> {
     /// Return an approximated rational representation of the number
     /// The `limit` argument specify the maximum value of denominator. This will
@@ -37,11 +51,17 @@ pub trait Computable<T> {
 
 // TODO: implement the rational approximation for all irrational types
 
+/// Represents a number type with corresponding signed version
+///
+/// Signed number can implement this trait as well, with `type Signed = Self`.
 pub trait WithSigned {
     type Signed;
     fn to_signed(self) -> Self::Signed;
 }
 
+/// Represents a number type with corresponding unsigned version
+///
+/// Unsigned number can implement this trait as well, with `type Unsigned = Self`.
 pub trait WithUnsigned {
     type Unsigned;
     fn to_unsigned(self) -> Self::Unsigned;
