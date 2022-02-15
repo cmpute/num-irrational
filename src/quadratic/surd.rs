@@ -1,6 +1,7 @@
 use crate::cont_frac::ContinuedFraction;
 use crate::traits::{Approximation, Computable, FromSqrt, FromSqrtError, WithSigned, WithUnsigned};
 use core::ops::{Add, AddAssign, Div, Mul, Neg, Sub};
+use core::convert::TryFrom;
 use num_integer::{sqrt, Integer, Roots};
 use num_traits::{
     CheckedAdd, CheckedMul, FromPrimitive, NumRef, One, RefNum, Signed, ToPrimitive, Zero,
@@ -39,14 +40,20 @@ impl<T: Integer> QuadraticSurd<T> {
 
     #[inline]
     pub fn is_rational(&self) -> bool {
-        self.r >= T::zero() && self.b.is_zero() || self.r.is_zero()
+        self.b.is_zero() || self.r.is_zero()
+    }
+
+    /// Determine if the quadratic number has no real part (i.e. a = 0, b != 0)
+    #[inline]
+    pub fn is_pure(&self) -> bool {
+        self.a.is_zero() && !self.b.is_zero()
     }
 
     #[inline]
     fn panic_if_complex(&self) {
         // only need to check when we allow construction of complex surd number
         #[cfg(feature = "complex")]
-        if self.r.is_negative() {
+        if self.r < T::zero() {
             panic!("operation not supported on complex numbers");
         }
     }
@@ -264,6 +271,7 @@ where
         self.panic_if_complex();
 
         // TODO: ensure the algorithm is correct
+        // TODO: truncate to gaussian integers if complex
         let bneg = self.b.is_negative();
         let br = sqrt(&self.b * &self.b * self.r);
         let num = if bneg {
@@ -617,9 +625,11 @@ where
 
 #[cfg(feature = "complex")]
 impl<T: QuadraticSurdBase + WithUnsigned<Unsigned = U> + AddAssign, U> TryFrom<QuadraticSurd<T>>
-    for ContinuedFraction<T> 
+    for ContinuedFraction<U> 
 where
     for<'r> &'r T: RefNum<T>, {
+    type Error = ();
+
     fn try_from(s: QuadraticSurd<T>) -> Result<Self, ()> {
         if s.r.is_negative() {
             Err(())
@@ -659,6 +669,7 @@ impl<T: Integer + fmt::Display> fmt::Display for QuadraticSurd<T> {
             self.b.is_one(),
             self.c.is_one(),
         ) {
+            // TODO (v0.1): support display `i` by using the alternative flag?
             (true, true, _, _) => write!(f, "0"),
             (true, false, true, true) => write!(f, "√{}", self.r),
             (true, false, false, true) => write!(f, "{}√{}", self.b, self.r),
@@ -712,7 +723,7 @@ fn reduce_bin_op<T: QuadraticSurdBase>(
 where
     for<'r> &'r T: RefNum<T>,
 {
-    if (lhs.is_negative() && rhs.is_positive()) || (lhs.is_positive() && rhs.is_negative()) {
+    if (lhs.r.is_negative() && rhs.r.is_positive()) || (lhs.r.is_positive() && rhs.r.is_negative()) {
         panic!("two root bases are not compatible!")
     }
 
@@ -794,6 +805,8 @@ where
     }
 }
 
+// TODO (v0.1): support ops with Ratio
+
 impl<T: QuadraticSurdBase> Mul<QuadraticSurd<T>> for QuadraticSurd<T>
 where
     for<'r> &'r T: RefNum<T>,
@@ -801,6 +814,10 @@ where
     type Output = QuadraticSurd<T>;
     #[inline]
     fn mul(self, rhs: QuadraticSurd<T>) -> QuadraticSurd<T> {
+        // TODO: shortcuts if rhs is integer, rational
+        if self.is_pure() && rhs.is_pure() {
+            return Self::new(T::zero(), self.b * rhs.b, self.c * rhs.c, self.r * rhs.r)
+        }
         let (lhs, rhs) = reduce_bin_op(self, rhs);
 
         let gcd_lr = (&lhs.a).gcd(&lhs.b).gcd(&rhs.c); // gcd between lhs numerator and rhs denominator
@@ -1145,28 +1162,56 @@ mod tests {
 
     #[test]
     fn conversion_between_contfrac() {
-        let cf_phi = ContinuedFraction::<u32>::new(vec![1], vec![1], false);
+        let cf_phi = ContinuedFraction::<u32>::new(vec![1i32], vec![1], false);
         assert_eq!(QuadraticSurd::from(cf_phi.clone()), PHI);
-        assert_eq!(ContinuedFraction::from(PHI), cf_phi);
+        assert_eq!(ContinuedFraction::try_from(PHI).unwrap(), cf_phi);
 
-        let cf_sq2 = ContinuedFraction::<u32>::new(vec![1], vec![2], false);
+        let cf_sq2 = ContinuedFraction::<u32>::new(vec![1i32], vec![2], false);
         let surd_sq2 = QuadraticSurd::new(0, 1, 1, 2);
         assert_eq!(QuadraticSurd::from(cf_sq2.clone()), surd_sq2);
-        assert_eq!(ContinuedFraction::from(surd_sq2), cf_sq2);
+        assert_eq!(ContinuedFraction::try_from(surd_sq2).unwrap(), cf_sq2);
 
-        let cf_n_sq2 = ContinuedFraction::<u32>::new(vec![1], vec![2], true);
+        let cf_n_sq2 = ContinuedFraction::<u32>::new(vec![1i32], vec![2], true);
         let surd_n_sq2 = QuadraticSurd::new(0, -1, 1, 2);
         assert_eq!(QuadraticSurd::from(cf_n_sq2.clone()), surd_n_sq2);
-        assert_eq!(ContinuedFraction::from(surd_n_sq2), cf_n_sq2);
+        assert_eq!(ContinuedFraction::try_from(surd_n_sq2).unwrap(), cf_n_sq2);
 
-        let cf_sq2_7 = ContinuedFraction::<u32>::new(vec![0, 4], vec![1, 18, 1, 8], false);
+        let cf_sq2_7 = ContinuedFraction::<u32>::new(vec![0i32, 4], vec![1, 18, 1, 8], false);
         let surd_sq2_7 = QuadraticSurd::new(0, 1, 7, 2);
         assert_eq!(QuadraticSurd::from(cf_sq2_7.clone()), surd_sq2_7);
-        assert_eq!(ContinuedFraction::from(surd_sq2_7), cf_sq2_7);
+        assert_eq!(ContinuedFraction::try_from(surd_sq2_7).unwrap(), cf_sq2_7);
 
-        let cf_10_sq2_7 = ContinuedFraction::<u32>::new(vec![1, 4], vec![2], false);
+        let cf_10_sq2_7 = ContinuedFraction::<u32>::new(vec![1i32, 4], vec![2], false);
         let surd_10_sq2_7 = QuadraticSurd::new(10, -1, 7, 2);
         assert_eq!(QuadraticSurd::from(cf_10_sq2_7.clone()), surd_10_sq2_7);
-        assert_eq!(ContinuedFraction::from(surd_10_sq2_7), cf_10_sq2_7);
+        assert_eq!(ContinuedFraction::try_from(surd_10_sq2_7).unwrap(), cf_10_sq2_7);
+    }
+}
+
+
+#[cfg(test)]
+mod complex_tests {
+    use super::*;
+
+    #[cfg(not(feature = "complex"))]
+    #[test]
+    fn from_sqrt_test() {
+        assert_eq!(QuadraticSurd::from_sqrt(-2).unwrap_err(), FromSqrtError::Complex);
+        assert_eq!(QuadraticSurd::from_sqrt(Ratio::new(-1, 2)).unwrap_err(), FromSqrtError::Complex);
+        assert_eq!(QuadraticSurd::from_sqrt(QuadraticSurd::from(-1)).unwrap_err(), FromSqrtError::Complex);
+    }
+
+    #[cfg(feature = "complex")]
+    #[test]
+    fn from_sqrt_test() {
+        assert!(QuadraticSurd::from_sqrt(-2i32).is_ok());
+        assert!(QuadraticSurd::from_sqrt(Ratio::new(-1i32, 2)).is_ok());
+        assert!(QuadraticSurd::from_sqrt(QuadraticSurd::from(-1i32)).is_ok());
+
+        let sq2i = QuadraticSurd::from_sqrt(-2i32).unwrap();
+        let sqhalfi = QuadraticSurd::from_sqrt(Ratio::new(-1i32, 2)).unwrap();
+        let i = QuadraticSurd::from_sqrt(QuadraticSurd::from(-1i32)).unwrap();
+        assert_eq!(sqhalfi * 2, sq2i);
+        assert_eq!(sq2i * i, QuadraticSurd::from_sqrt(2i32).unwrap());
     }
 }
