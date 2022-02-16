@@ -1,4 +1,4 @@
-//! This module contains the implementations of algorithms related to
+//! Data structures and algorithms implementations related to
 //! regular and generalized continued fraction
 //!
 //! # References:

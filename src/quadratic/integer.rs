@@ -12,6 +12,8 @@ pub struct QuadraticInt<T> {
     d: T, // zero if the quad int is a conventional integer
 }
 
+/// Const generic version of [QuadraticInt], the operations can only be performed between
+/// the integers with the same base
 pub struct FixedQuadraticInt<T, const D: i32> {
     a: T,
     b: T,

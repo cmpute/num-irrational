@@ -112,6 +112,11 @@ where
             panic!("denominator is zero");
         }
 
+        // ensure b, r are zeros at the same time
+        if self.b.is_zero() {
+            self.r = T::zero();
+        }
+
         // test if the surd is rational
         let root = sqrt(self.r.abs());
         if &root * &root == self.r {
@@ -451,6 +456,9 @@ where
         if self.a == other.a && self.b == other.b && self.c == other.c && self.r == other.r {
             return true;
         }
+        if self.r == other.r || self.r.is_zero() || other.r.is_zero() {
+            return false;
+        }
 
         match reduce_bin_op(self.clone(), other.clone()) {
             Some((l, r)) => l.a == r.a && l.b == r.b && l.c == r.c && l.r == r.r,
@@ -714,7 +722,8 @@ impl<T: Integer + fmt::Display> fmt::Display for QuadraticSurd<T> {
 }
 
 // Reduce root base for binary operands. Return None if the two bases
-// cannot be matched.
+// cannot be matched. This function assumes the root bases on both sides
+// are not zero
 #[inline]
 #[cfg(not(feature = "complex"))]
 fn reduce_bin_op<T: QuadraticSurdBase>(
@@ -724,6 +733,9 @@ fn reduce_bin_op<T: QuadraticSurdBase>(
 where
     for<'r> &'r T: RefNum<T>,
 {
+    debug_assert!(!lhs.r.is_zero());
+    debug_assert!(!rhs.r.is_zero());
+
     let result = if lhs.r > rhs.r {
         let hint = &lhs.r / &rhs.r;
         (lhs.reduce_root_hinted(hint), rhs)
@@ -967,10 +979,10 @@ where
     #[inline]
     fn div(self, rhs: Ratio<T>) -> QuadraticSurd<T> {
         let (rhs_n, rhs_d) = rhs.into();
-        let ab_gcd = self.a.gcd(&self.b).gcd(&rhs_d);
-        let c_gcd = self.c.gcd(&rhs_n);
-        let denom_rem = rhs_d / &ab_gcd;
-        let numer_rem = rhs_n / &c_gcd;
+        let ab_gcd = self.a.gcd(&self.b).gcd(&rhs_n);
+        let c_gcd = self.c.gcd(&rhs_d);
+        let denom_rem = rhs_n / &ab_gcd;
+        let numer_rem = rhs_d / &c_gcd;
         QuadraticSurd::new(
             self.a / &ab_gcd * &numer_rem,
             self.b / ab_gcd * numer_rem,
@@ -1232,6 +1244,9 @@ mod tests {
     pub const PHI45: QuadraticSurd<i32> = QuadraticSurd::new_raw(3, 1, 6, 45); // non-reduced version of PHI
     pub const PHI45_R: QuadraticSurd<i32> = QuadraticSurd::new_raw(-3, 1, 6, 45); // non-reduced version of PHI_R
 
+    pub const SQ5: QuadraticSurd<i32> = QuadraticSurd::new_raw(0, 1, 1, 5);
+    pub const N_SQ5: QuadraticSurd<i32> = QuadraticSurd::new_raw(0, -1, 1, 5);
+
     #[test]
     fn from_rationals_test() {
         assert_eq!(
@@ -1277,27 +1292,7 @@ mod tests {
     }
 
     #[test]
-    fn arithmic_test() {
-        let sq5 = QuadraticSurd::from_sqrt(5).unwrap();
-        assert_eq!(-sq5, QuadraticSurd::new_raw(0, -1, 1, 5));
-
-        // add
-        assert_eq!(PHI + PHI_R, sq5);
-        assert_eq!(PHI45 + PHI_R, sq5);
-        assert_eq!(PHI + PHI45_R, sq5);
-        assert_eq!(N_PHI + N_PHI_R, -sq5);
-        assert!((PHI + N_PHI).is_zero());
-        assert!((PHI + N_PHI_R).is_one());
-
-        // sub
-        assert!((PHI - PHI).is_zero());
-        assert!((PHI - PHI45).is_zero());
-        assert!((PHI - PHI_R).is_one());
-        assert!((PHI - PHI45_R).is_one());
-        assert!((N_PHI_R - N_PHI).is_one());
-        assert_eq!(PHI - N_PHI_R, sq5);
-        assert_eq!(N_PHI - PHI_R, -sq5);
-
+    fn property_test() {
         // recip
         assert_eq!(PHI.recip(), PHI_R);
         assert_eq!(N_PHI.recip(), N_PHI_R);
@@ -1306,7 +1301,47 @@ mod tests {
         assert_eq!(PHI.conj(), N_PHI_R);
         assert_eq!(PHI_R.conj(), N_PHI);
 
+        // is_pure
+        assert_eq!(PHI.is_pure(), false);
+        assert_eq!(SQ5.is_pure(), true);
+    }
+
+    #[test]
+    fn arithmic_test() {
+        // add
+        assert_eq!(PHI_R + 1, PHI);
+        assert_eq!(PHI45_R + 1, PHI45);
+        assert_eq!(N_PHI + 1, N_PHI_R);
+        assert_eq!(PHI_R + Ratio::one(), PHI);
+        assert_eq!(PHI45_R + Ratio::one(), PHI45);
+        assert_eq!(N_PHI + Ratio::one(), N_PHI_R);
+        assert_eq!(PHI + PHI_R, SQ5);
+        assert_eq!(PHI45 + PHI_R, SQ5);
+        assert_eq!(PHI + PHI45_R, SQ5);
+        assert_eq!(N_PHI + N_PHI_R, N_SQ5);
+        assert!((PHI + N_PHI).is_zero());
+        assert!((PHI + N_PHI_R).is_one());
+
+        // sub
+        assert_eq!(PHI - 1, PHI_R);
+        assert_eq!(PHI45 - 1, PHI45_R);
+        assert_eq!(N_PHI_R - 1, N_PHI);
+        assert_eq!(PHI - Ratio::one(), PHI_R);
+        assert_eq!(PHI45 - Ratio::one(), PHI45_R);
+        assert_eq!(N_PHI_R - Ratio::one(), N_PHI);
+        assert!((PHI - PHI).is_zero());
+        assert!((PHI - PHI45).is_zero());
+        assert!((PHI - PHI_R).is_one());
+        assert!((PHI - PHI45_R).is_one());
+        assert!((N_PHI_R - N_PHI).is_one());
+        assert_eq!(PHI - N_PHI_R, SQ5);
+        assert_eq!(N_PHI - PHI_R, -SQ5);
+
         // mul
+        assert_eq!(PHI * 1, PHI);
+        assert_eq!(PHI * -1, N_PHI);
+        assert_eq!(PHI * Ratio::one(), PHI);
+        assert_eq!(PHI * -Ratio::one(), N_PHI);
         assert!((PHI * PHI_R).is_one());
         assert!((PHI45 * PHI_R).is_one());
         assert!((PHI * PHI45_R).is_one());
@@ -1315,12 +1350,34 @@ mod tests {
         assert_eq!(N_PHI * N_PHI, PHI_SQ);
 
         // div
+        assert_eq!(PHI / 1, PHI);
+        assert_eq!(PHI / -1, N_PHI);
+        assert_eq!(PHI / Ratio::one(), PHI);
+        assert_eq!(PHI / -Ratio::one(), N_PHI);
         assert!((PHI / PHI).is_one());
         assert!((PHI45 / PHI).is_one());
         assert!((PHI / PHI45).is_one());
         assert!((N_PHI / N_PHI).is_one());
         assert_eq!(PHI / PHI_R, PHI_SQ);
         assert_eq!(N_PHI / N_PHI_R, PHI_SQ);
+
+        // associativity test
+        let three_half = Ratio::new(3, 2);
+        assert_eq!(PHI + 5 - PHI, QuadraticSurd::from(5));
+        assert_eq!(PHI + three_half - PHI, QuadraticSurd::from(three_half));
+        assert_eq!(PHI + SQ5 - PHI, SQ5);
+        assert_eq!(PHI + 5 - PHI45, QuadraticSurd::from(5));
+        assert_eq!(PHI + three_half - PHI45, QuadraticSurd::from(three_half));
+        assert_eq!(PHI + SQ5 - PHI45, SQ5);
+        assert_eq!(PHI * 5 / PHI45, QuadraticSurd::from(5));
+        assert_eq!(PHI * three_half / PHI45, QuadraticSurd::from(three_half));
+        assert_eq!(PHI * SQ5 / PHI45, SQ5);
+
+        // mixed
+        assert_eq!(PHI * 2 - 1, SQ5);
+        assert_eq!(PHI_R * 2 + 1, SQ5);
+        assert_eq!(PHI / Ratio::new(1, 2) - 1, SQ5);
+        assert_eq!((PHI - Ratio::new(1, 2)) * 2, SQ5);
     }
 
     #[test]
@@ -1361,6 +1418,7 @@ mod complex_tests {
     #[cfg(not(feature = "complex"))]
     #[test]
     fn from_sqrt_test() {
+        assert_eq!(QuadraticSurd::from_sqrt(5).unwrap(), QuadraticSurd::new_raw(0, 1, 1, 5));
         assert_eq!(
             QuadraticSurd::from_sqrt(-2).unwrap_err(),
             FromSqrtError::Complex

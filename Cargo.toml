@@ -1,6 +1,6 @@
 [package]
 name = "num-irrational"
-version = "0.0.4"
+version = "0.0.5"
 edition = "2018"
 
 repository = "https://github.com/cmpute/num-irrational"
