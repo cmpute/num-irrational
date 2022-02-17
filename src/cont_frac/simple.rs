@@ -7,7 +7,7 @@ use num_integer::Integer;
 use num_rational::Ratio;
 use num_traits::{CheckedAdd, CheckedMul, Num, NumRef, One, RefNum, Signed, Zero};
 use std::fmt;
-use std::ops::{Add, AddAssign, Mul};
+use std::ops::{Add, AddAssign, Div, Mul, Neg, Sub};
 
 /// This struct represents a simple continued fraction `a0 + 1/(a1 + 1/ (a2 + ...))`
 /// Where a0 is an signed integer, a1, a2, .. are positive integers
@@ -51,12 +51,14 @@ impl<T> ContinuedFraction<T> {
     }
 }
 
-impl<T> ContinuedFraction<T> {
+impl<U> ContinuedFraction<U> {
+    /// Create a continued fraction from
+    ///
     /// This function will make sure that if two numbers are equal,
     /// their internal representation in continued fraction will be the same
-    pub fn new<U: Num + PartialOrd + AddAssign + WithUnsigned<Unsigned = T>>(
-        a_coeffs: Vec<U>,
-        p_coeffs: Vec<U>,
+    pub fn new<T: Num + PartialOrd + AddAssign + WithUnsigned<Unsigned = U>>(
+        a_coeffs: Vec<T>,
+        p_coeffs: Vec<T>,
         negate: bool,
     ) -> Self {
         if a_coeffs.len() == 0 && p_coeffs.len() == 0 {
@@ -65,7 +67,7 @@ impl<T> ContinuedFraction<T> {
 
         let mut negate = negate; // carry the flag when we process through the coefficients
         let mut negative = None; // final sign for the number
-        let mut dedup_a: Vec<U> = Vec::with_capacity(a_coeffs.len());
+        let mut dedup_a: Vec<T> = Vec::with_capacity(a_coeffs.len());
         let mut it = a_coeffs.into_iter();
 
         // iteratively consume aperiodic coefficients
@@ -73,14 +75,14 @@ impl<T> ContinuedFraction<T> {
             match it.next() {
                 Some(a) => {
                     // apply negate flag
-                    let a = if negate { U::zero() - a } else { a };
+                    let a = if negate { T::zero() - a } else { a };
 
                     // special cases
                     if dedup_a.len() == 0 {
                         // if first element
                         // make sure the first element is non-negative
-                        if a < U::zero() {
-                            dedup_a.push(U::zero() - a);
+                        if a < T::zero() {
+                            dedup_a.push(T::zero() - a);
                             negative = Some(true);
                             negate = !negate;
                         } else {
@@ -101,26 +103,26 @@ impl<T> ContinuedFraction<T> {
                     }
 
                     // make sure all coefficients are non-negative
-                    if a < U::zero() {
+                    if a < T::zero() {
                         // In this case we use the following formula
                         // [.., a_{n-1}, -a_n, a_{n+1}, ..] = [.., a_{n-1}-1, 1, a_n-1, -[a_{n+1}, ..]]
                         let mut target = a;
                         loop {
                             let am1 = dedup_a.pop().unwrap(); // a_{n-1}
                             let has_am2 = dedup_a.len() != 0; // has a_{n-2}
-                            debug_assert!(am1 >= U::zero());
+                            debug_assert!(am1 >= T::zero());
 
                             if am1.is_one() {
                                 if has_am2 {
                                     // [.., a_{n-2}, 1-1, 1, a_n-1, -[a_{n+1}, ..]]
                                     // = [.., a_{n-2}+1, a_n-1, -[a_{n+1}, ..]]
-                                    *dedup_a.last_mut().unwrap() += U::one();
-                                    dedup_a.push(U::zero() - target - U::one());
+                                    *dedup_a.last_mut().unwrap() += T::one();
+                                    dedup_a.push(T::zero() - target - T::one());
                                 } else {
                                     // a_{n-1}-1 = 0 will be the first term
-                                    dedup_a.push(U::zero());
-                                    dedup_a.push(U::one());
-                                    dedup_a.push(U::zero() - target - U::one());
+                                    dedup_a.push(T::zero());
+                                    dedup_a.push(T::one());
+                                    dedup_a.push(T::zero() - target - T::one());
                                     negative = Some(false);
                                 }
                                 negate = !negate;
@@ -132,7 +134,7 @@ impl<T> ContinuedFraction<T> {
                                     // = [.., a_{n-2}-a_n, a_{n+1}, ..]
                                     let am2 = dedup_a.pop().unwrap();
                                     let new_target = am2 + target;
-                                    if new_target < U::zero() {
+                                    if new_target < T::zero() {
                                         // propagate to previous terms
                                         target = new_target;
                                     } else {
@@ -141,18 +143,18 @@ impl<T> ContinuedFraction<T> {
                                     }
                                 } else {
                                     // a_n is the first non-zero coefficient, flip the sign
-                                    dedup_a.push(U::zero());
-                                    dedup_a.push(U::zero() - target);
+                                    dedup_a.push(T::zero());
+                                    dedup_a.push(T::zero() - target);
                                     negative = Some(true);
                                     negate = !negate;
                                     break;
                                 }
                             } else {
                                 // normal case
-                                debug_assert!(am1 > U::one());
-                                dedup_a.push(am1 - U::one());
-                                dedup_a.push(U::one());
-                                dedup_a.push(U::zero() - target - U::one());
+                                debug_assert!(am1 > T::one());
+                                dedup_a.push(am1 - T::one());
+                                dedup_a.push(T::one());
+                                dedup_a.push(T::zero() - target - T::one());
                                 negate = !negate;
                                 break;
                             }
@@ -165,10 +167,10 @@ impl<T> ContinuedFraction<T> {
                         } else {
                             debug_assert!(!a.is_zero());
                             if matches!(negative, None) {
-                                if a < U::zero() {
+                                if a < T::zero() {
                                     println!("Check1!");
                                 }
-                                negative = Some(a < U::zero());
+                                negative = Some(a < T::zero());
                             }
                             dedup_a.push(a);
                         }
@@ -205,8 +207,8 @@ impl<T> ContinuedFraction<T> {
         }
 
         if matches!(negative, None) {
-            if matches!(p_coeffs.first(), Some(p) if p <= &U::zero()) {
-                // TODO: how to handle negative coefficients in the periodic parts
+            if matches!(p_coeffs.first(), Some(p) if p <= &T::zero()) {
+                // TODO (v0.2): how to handle negative coefficients in the periodic parts
                 unimplemented!()
             } else {
                 negative = Some(negate);
@@ -214,8 +216,8 @@ impl<T> ContinuedFraction<T> {
         }
 
         // collect the results
-        let a_coeffs: Vec<T> = dedup_a.into_iter().map(|v| v.to_unsigned()).collect();
-        let p_coeffs: Vec<T> = p_coeffs.into_iter().map(|v| v.to_unsigned()).collect();
+        let a_coeffs: Vec<U> = dedup_a.into_iter().map(|v| v.to_unsigned()).collect();
+        let p_coeffs: Vec<U> = p_coeffs.into_iter().map(|v| v.to_unsigned()).collect();
         ContinuedFraction {
             a_coeffs,
             p_coeffs,
@@ -395,6 +397,18 @@ impl<
         }
     }
 
+    /// Converts to an integer by using the first coefficient
+    #[inline]
+    pub fn to_integer(&self) -> Approximation<U> {
+        let a = self.a_coeffs.first().unwrap().clone().to_signed();
+        let a = if self.negative { -a } else { a };
+        if self.is_integer() {
+            Approximation::Exact(a)
+        } else {
+            Approximation::Approximated(a)
+        }
+    }
+
     #[inline]
     /// This method returns the corresponding rational number if it's rational,
     /// returns the expansion until the first repeating occurence
@@ -475,8 +489,10 @@ impl<T: fmt::Display> fmt::Display for ContinuedFraction<T> {
     }
 }
 
-impl<T: Zero> Zero for ContinuedFraction<T> {
-    fn zero() -> Self {
+// trait bound free implementations for several simple functions
+impl<T: Zero> ContinuedFraction<T> {
+    #[inline]
+    fn _zero() -> Self {
         ContinuedFraction {
             a_coeffs: vec![T::zero()],
             p_coeffs: Vec::new(),
@@ -484,15 +500,42 @@ impl<T: Zero> Zero for ContinuedFraction<T> {
         }
     }
 
-    fn is_zero(&self) -> bool {
+    #[inline]
+    fn _is_zero(&self) -> bool {
         self.a_coeffs.len() == 1 && self.a_coeffs[0].is_zero() && self.p_coeffs.len() == 0
     }
 }
 
-impl<T: One + PartialEq> One for ContinuedFraction<T> {
+impl<
+        T: QuadraticSurdBase + AddAssign + WithUnsigned<Unsigned = U>,
+        U: Integer + Clone + NumRef + CheckedAdd + CheckedMul + WithSigned<Signed = T>,
+    > Zero for ContinuedFraction<U>
+where
+    for<'r> &'r T: RefNum<T>,
+    for<'r> &'r U: RefNum<U>,
+{
+    #[inline]
+    fn zero() -> Self {
+        Self::_zero()
+    }
+
+    #[inline]
+    fn is_zero(&self) -> bool {
+        self._is_zero()
+    }
+}
+
+impl<
+        T: QuadraticSurdBase + AddAssign + WithUnsigned<Unsigned = U>,
+        U: Integer + Clone + NumRef + CheckedAdd + CheckedMul + WithSigned<Signed = T>,
+    > One for ContinuedFraction<U>
+where
+    for<'r> &'r T: RefNum<T>,
+    for<'r> &'r U: RefNum<U>,
+{
     fn one() -> Self {
         ContinuedFraction {
-            a_coeffs: vec![T::one()],
+            a_coeffs: vec![U::one()],
             p_coeffs: Vec::new(),
             negative: false,
         }
@@ -528,7 +571,7 @@ impl<T: Integer + Clone + WithUnsigned<Unsigned = U>, U: Zero> From<Ratio<T>>
 {
     fn from(r: Ratio<T>) -> Self {
         if r.is_zero() {
-            return Self::zero();
+            return Self::_zero();
         }
 
         let mut coeffs = Vec::new();
@@ -561,19 +604,26 @@ impl<T: Integer + Clone + WithUnsigned<Unsigned = U>, U: Zero> From<Ratio<T>>
     }
 }
 
-pub struct ParseContFracError {}
+// TODO (v0.2): expose this after implemented
+mod parse {
+    use super::{ContinuedFraction, FromStr};
 
-impl<T> FromStr for ContinuedFraction<T> {
-    type Err = ParseContFracError;
+    pub enum ParseContFracError {}
 
-    /// Parse from standard format (like 355/113 = "[3; 7, 16]", (1+sqrt(5))/2 = "[1; (1)]")
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        unimplemented!()
+    impl<T> FromStr for ContinuedFraction<T> {
+        type Err = ParseContFracError;
+
+        /// Parse from standard format (like 355/113 = "[3; 7, 16]", (1+sqrt(5))/2 = "[1; (1)]")
+        fn from_str(s: &str) -> Result<Self, Self::Err> {
+            unimplemented!()
+        }
     }
 }
 
-impl<T: Num + WithUnsigned<Unsigned = U> + PartialOrd, U: NumRef + PartialOrd> Add<T>
-    for ContinuedFraction<U>
+impl<
+        T: Num + PartialOrd + AddAssign + Signed + WithUnsigned<Unsigned = U>,
+        U: NumRef + PartialOrd + WithSigned<Signed = T>,
+    > Add<T> for ContinuedFraction<U>
 where
     for<'r> &'r U: RefNum<U>,
 {
@@ -584,37 +634,42 @@ where
         let i = new_a.first().unwrap();
 
         // find if the signed is flipped after adding
-        let (new_i, flipped) = if self.negative {
-            if rhs < T::zero() {
+        let (new_i, flipped) = match (self.negative, rhs.is_negative()) {
+            (true, true) => {
                 // neg + neg
-                let rhs = (T::zero() - rhs).to_unsigned();
+                let rhs = (-rhs).to_unsigned();
                 (rhs + i, false)
-            } else {
+            }
+            (true, false) => {
                 // neg + pos
                 let rhs = rhs.to_unsigned();
-                if *i < rhs {
+                if i < &rhs {
                     (rhs - i, true)
                 } else {
                     (i - rhs, false)
                 }
             }
-        } else {
-            if rhs < T::zero() {
+            (false, true) => {
                 // pos + neg
-                let rhs = (T::zero() - rhs).to_unsigned();
-                if *i < rhs {
+                let rhs = (-rhs).to_unsigned();
+                if i < &rhs {
                     (rhs - i, true)
                 } else {
                     (i - rhs, false)
                 }
-            } else {
+            }
+            (false, false) => {
                 // pos + pos
                 (i + rhs.to_unsigned(), false)
             }
         };
 
         if flipped {
-            unimplemented!() // TODO: use InfiniteContinuedFraction
+            // delegate to the constructor to handle the negative sign
+            let mut new_a: Vec<T> = new_a.into_iter().map(|u| u.to_signed()).collect();
+            let new_p: Vec<T> = self.p_coeffs.into_iter().map(|u| u.to_signed()).collect();
+            *new_a.first_mut().unwrap() = -new_i.to_signed();
+            Self::new(new_a, new_p, self.negative)
         } else {
             *new_a.first_mut().unwrap() = new_i;
 
@@ -623,11 +678,39 @@ where
                 p_coeffs: self.p_coeffs,
                 negative: self.negative,
             };
-            if result.is_zero() {
+            if result._is_zero() {
+                // clear negative flag for 0
                 result.negative = false;
-            } // clear negative flag for 0
+            }
             result
         }
+    }
+}
+
+impl<
+        T: Num + PartialOrd + AddAssign + Signed + WithUnsigned<Unsigned = U>,
+        U: NumRef + PartialOrd + WithSigned<Signed = T>,
+    > Sub<T> for ContinuedFraction<U>
+where
+    for<'r> &'r U: RefNum<U>,
+{
+    type Output = Self;
+
+    fn sub(self, rhs: T) -> Self::Output {
+        self.add(-rhs)
+    }
+}
+
+impl<T: Zero> Neg for ContinuedFraction<T> {
+    type Output = ContinuedFraction<T>;
+
+    fn neg(self) -> Self::Output {
+        let mut result = self;
+        if !result._is_zero() {
+            // don't negate when the number is zero
+            result.negative = !result.negative;
+        }
+        result
     }
 }
 
@@ -642,56 +725,82 @@ where
     type Output = Self;
 
     fn mul(self, rhs: T) -> Self {
-        if self.is_integer() {
-            let mut new_a = self.a_coeffs;
-            let i = new_a.first().unwrap();
-            let (new_i, negative) = if rhs < T::zero() {
-                let rhs = (T::zero() - rhs).to_unsigned();
-                (rhs * i, !self.negative)
-            } else {
-                (rhs.to_unsigned() * i, self.negative)
-            };
-            *new_a.first_mut().unwrap() = new_i;
-
-            let mut result = ContinuedFraction {
-                a_coeffs: new_a,
-                p_coeffs: self.p_coeffs,
-                negative,
-            };
-            if result.is_zero() {
-                result.negative = false;
-            } // clear negative flag for 0
-            result
+        if self.is_rational() {
+            Self::from(self.to_rational().value() * rhs)
         } else {
             Self::try_from(QuadraticSurd::<T>::from(self) * rhs).unwrap()
         }
     }
 }
 
-impl<T> Add<Ratio<T>> for ContinuedFraction<T> {
+impl<
+        T: QuadraticSurdBase + AddAssign + WithUnsigned<Unsigned = U>,
+        U: Integer + Clone + NumRef + CheckedAdd + CheckedMul + WithSigned<Signed = T>,
+    > Div<T> for ContinuedFraction<U>
+where
+    for<'r> &'r T: RefNum<T>,
+    for<'r> &'r U: RefNum<U>,
+{
     type Output = Self;
 
-    fn add(self, rhs: Ratio<T>) -> Self {
-        unimplemented!() // TODO (v0.1): implement by converting to ratio or quadratic surd
+    fn div(self, rhs: T) -> Self {
+        if self.is_rational() {
+            Self::from(self.to_rational().value() / rhs)
+        } else {
+            Self::try_from(QuadraticSurd::<T>::from(self) / rhs).unwrap()
+        }
     }
 }
 
-impl<T> Add<ContinuedFraction<T>> for ContinuedFraction<T> {
-    type Output = Self;
+macro_rules! impl_binop_for_ratio_surd {
+    (impl $imp:ident, $method:ident) => {
+        impl<
+                T: QuadraticSurdBase + AddAssign + WithUnsigned<Unsigned = U>,
+                U: Integer + Clone + NumRef + CheckedAdd + CheckedMul + WithSigned<Signed = T>,
+            > $imp<Ratio<T>> for ContinuedFraction<U>
+        where
+            for<'r> &'r T: RefNum<T>,
+            for<'r> &'r U: RefNum<U>,
+        {
+            type Output = Self;
 
-    fn add(self, rhs: ContinuedFraction<T>) -> Self {
-        // shortcut cases: is_integer, is_rational
-        unimplemented!()
-    }
+            fn $method(self, rhs: Ratio<T>) -> Self {
+                if self.is_rational() {
+                    Self::from(self.to_rational().value().$method(rhs))
+                } else {
+                    Self::try_from(QuadraticSurd::<T>::from(self).$method(rhs)).unwrap()
+                }
+            }
+        }
+
+        impl<
+                T: QuadraticSurdBase + AddAssign + WithUnsigned<Unsigned = U>,
+                U: Integer + Clone + NumRef + CheckedAdd + CheckedMul + WithSigned<Signed = T>,
+            > $imp<ContinuedFraction<U>> for ContinuedFraction<U>
+        where
+            for<'r> &'r T: RefNum<T>,
+            for<'r> &'r U: RefNum<U>,
+        {
+            type Output = Self;
+
+            fn $method(self, rhs: ContinuedFraction<U>) -> Self {
+                if rhs.is_rational() {
+                    self.$method(rhs.to_rational().value())
+                } else {
+                    Self::try_from(
+                        QuadraticSurd::<T>::from(self).$method(QuadraticSurd::<T>::from(rhs)),
+                    )
+                    .unwrap()
+                }
+            }
+        }
+    };
 }
 
-impl<T> Mul<ContinuedFraction<T>> for ContinuedFraction<T> {
-    type Output = Self;
-
-    fn mul(self, rhs: ContinuedFraction<T>) -> Self {
-        unimplemented!()
-    }
-}
+impl_binop_for_ratio_surd!(impl Add, add);
+impl_binop_for_ratio_surd!(impl Sub, sub);
+impl_binop_for_ratio_surd!(impl Mul, mul);
+impl_binop_for_ratio_surd!(impl Div, div);
 
 /// This trait represents a regular continued fraction with infinite
 /// coefficients. All operations here will be done iteratively
@@ -976,6 +1085,8 @@ mod tests {
 
     #[test]
     fn cont_frac_arithmetic_test() {
+        // TODO (v0.2): add more tests to cover all cases
+
         let one = ContinuedFraction::one();
         let n_one = ContinuedFraction::<u32>::new(vec![1], vec![], true);
         let sq2 = ContinuedFraction::new(vec![1], vec![2], false);

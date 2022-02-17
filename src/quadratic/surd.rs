@@ -15,7 +15,7 @@ use num_rational::Ratio;
 pub trait QuadraticSurdBase: Integer + NumRef + Clone + Roots + Signed {}
 impl<T: Integer + NumRef + Clone + Roots + Signed> QuadraticSurdBase for T {}
 
-/// A quadratic number represented as `(a + b*sqrt(r)) / c`.
+/// A quadratic number represented as `(a + b*√r) / c`.
 /// If the support for complex number is enabled, then this struct can represent
 /// any quadratic integers.
 ///
@@ -176,7 +176,7 @@ where
         self
     }
 
-    /// Create a surd represented as `(a + b*sqrt(r)) / c` where `a`, `b`, `c`, `r` are integers.
+    /// Create a surd represented as `(a + b√r)) / c` where `a`, `b`, `c`, `r` are integers.
     ///
     /// # Panics
     /// If `c` is zero or `r` is negative when the `complex` feature is not enabled.
@@ -192,7 +192,7 @@ where
         ret
     }
 
-    /// Create a surd represented as `a + b sqrt(r)` where a, b, r are rationals.
+    /// Create a surd represented as `a + b√r` where a, b, r are rationals.
     ///
     /// # Panics
     /// If `r` is negative when the `complex` feature is not enabled.
@@ -214,7 +214,7 @@ where
     }
 
     /// Get the root of a quadratic equation `ax^2 + bx + c` with rational coefficients.
-    /// This method only returns one of the root `(b + sqrt(b^2 - 4ac)) / 2a`, use `conjugate()` for the other root
+    /// This method only returns one of the root `(b + √(b^2 - 4ac)) / 2a`, use `conjugate()` for the other root
     /// If there are only complex solutions, then `None` will be returned if the `complex` feature is not enabled.
     #[inline]
     pub fn from_equation(a: Ratio<T>, b: Ratio<T>, c: Ratio<T>) -> Option<Self> {
@@ -265,7 +265,7 @@ where
         )
     }
 
-    /// Return the conjugate of the surd, i.e. (a - b*sqrt(r)) / c
+    /// Return the conjugate of the surd, i.e. `(a - b√r) / c`
     #[inline]
     pub fn conj(self) -> Self {
         QuadraticSurd {
@@ -289,7 +289,7 @@ where
     pub fn trunc(self) -> Self {
         self.panic_if_complex();
 
-        // TODO: ensure the algorithm is correct
+        // TODO (v0.2): ensure the algorithm is correct
         // TODO: truncate to gaussian integers if complex
         let bneg = self.b.is_negative();
         let br = sqrt(&self.b * &self.b * self.r);
@@ -468,7 +468,7 @@ where
 }
 
 impl<T> Into<(T, T, T, T)> for QuadraticSurd<T> {
-    /// Deconstruct the quadratic surd `(a + b*sqrt(r)) / c` into tuple `(a,b,c,r)`
+    /// Deconstruct the quadratic surd `(a + b√r) / c` into tuple `(a,b,c,r)`
     fn into(self) -> (T, T, T, T) {
         (self.a, self.b, self.c, self.r)
     }
@@ -602,7 +602,7 @@ where
     debug_assert!(!c.is_zero() && !r.is_negative());
     debug_assert!(r.sqrt() * r.sqrt() != r);
 
-    // convert to form (p+sqrt(d))/q where q|d-p^2
+    // convert to form (p+√d)/q where q|d-p^2
     let mut d = r * &b * &b;
     let (mut p, mut q) = if b.is_negative() { (-a, -c) } else { (a, c) };
     if (&d - &p * &p) % &q != T::zero() {
@@ -695,27 +695,50 @@ where
     }
 }
 
-impl<T: Integer + fmt::Display> fmt::Display for QuadraticSurd<T> {
+impl<T: Integer + Signed + fmt::Display> fmt::Display for QuadraticSurd<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match (
-            self.a.is_zero(),
-            self.b.is_zero(),
-            self.b.is_one(),
-            self.c.is_one(),
-        ) {
-            // TODO (v0.1): support display `i` by using the alternative flag?
-            (true, true, _, _) => write!(f, "0"),
-            (true, false, true, true) => write!(f, "√{}", self.r),
-            (true, false, false, true) => write!(f, "{}√{}", self.b, self.r),
-            (true, false, true, false) => write!(f, "√{}/{}", self.b, self.c),
-            (true, false, false, false) => write!(f, "{}√{}/{}", self.b, self.r, self.c),
-            (false, true, _, true) => write!(f, "{}", self.a),
-            (false, true, _, false) => write!(f, "{}/{}", self.a, self.c),
-            (false, false, true, true) => write!(f, "{} + √{}", self.a, self.c),
-            (false, false, true, false) => write!(f, "({} + √{})/{}", self.a, self.r, self.c),
-            (false, false, false, true) => write!(f, "{} + {}√{}", self.b, self.r, self.c),
-            (false, false, false, false) => {
-                write!(f, "({} + {}√{})/{}", self.a, self.b, self.r, self.c)
+        if f.alternate() && self.r == -T::one() {
+            // print √-1 as j if alternate flag is set
+            match (
+                self.a.is_zero(),
+                self.b.is_zero(),
+                self.b.is_one(),
+                self.c.is_one(),
+            ) {
+                (true, true, _, _) => write!(f, "0"),
+                (true, false, true, true) => write!(f, "j"),
+                (true, false, false, true) => write!(f, "{}j", self.b),
+                (true, false, true, false) => write!(f, "j/{}", self.c),
+                (true, false, false, false) => write!(f, "{}j/{}", self.b, self.c),
+                (false, true, _, true) => write!(f, "{}", self.a),
+                (false, true, _, false) => write!(f, "{}/{}", self.a, self.c),
+                (false, false, true, true) => write!(f, "{} + j", self.a),
+                (false, false, true, false) => write!(f, "({} + j)/{}", self.a, self.c),
+                (false, false, false, true) => write!(f, "{} + {}j", self.a, self.b),
+                (false, false, false, false) => {
+                    write!(f, "({} + {}j)/{}", self.a, self.b, self.c)
+                }
+            }
+        } else {
+            match (
+                self.a.is_zero(),
+                self.b.is_zero(),
+                self.b.is_one(),
+                self.c.is_one(),
+            ) {
+                (true, true, _, _) => write!(f, "0"),
+                (true, false, true, true) => write!(f, "√{}", self.r),
+                (true, false, false, true) => write!(f, "{}√{}", self.b, self.r),
+                (true, false, true, false) => write!(f, "√{}/{}", self.r, self.c),
+                (true, false, false, false) => write!(f, "{}√{}/{}", self.b, self.r, self.c),
+                (false, true, _, true) => write!(f, "{}", self.a),
+                (false, true, _, false) => write!(f, "{}/{}", self.a, self.c),
+                (false, false, true, true) => write!(f, "{} + √{}", self.a, self.r),
+                (false, false, true, false) => write!(f, "({} + √{})/{}", self.a, self.r, self.c),
+                (false, false, false, true) => write!(f, "{} + {}√{}", self.a, self.b, self.r),
+                (false, false, false, false) => {
+                    write!(f, "({} + {}√{})/{}", self.a, self.b, self.r, self.c)
+                }
             }
         }
     }
@@ -1208,7 +1231,7 @@ where
         if delta2.is_negative() {
             return Err(FromSqrtError::Unrepresentable);
         }
-        // TODO: How to support complex quadratic surd here?
+        // TODO (v0.2): How to support complex quadratic surd here?
         let sqrt_delta = Self::from_sqrt(delta2)?;
         if !sqrt_delta.is_integer() {
             return Err(FromSqrtError::Unrepresentable);
@@ -1418,7 +1441,10 @@ mod complex_tests {
     #[cfg(not(feature = "complex"))]
     #[test]
     fn from_sqrt_test() {
-        assert_eq!(QuadraticSurd::from_sqrt(5).unwrap(), QuadraticSurd::new_raw(0, 1, 1, 5));
+        assert_eq!(
+            QuadraticSurd::from_sqrt(5).unwrap(),
+            QuadraticSurd::new_raw(0, 1, 1, 5)
+        );
         assert_eq!(
             QuadraticSurd::from_sqrt(-2).unwrap_err(),
             FromSqrtError::Complex

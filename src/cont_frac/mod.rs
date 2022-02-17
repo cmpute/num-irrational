@@ -10,9 +10,10 @@
 //!
 // TODO: support the hurwitz complex continued fraction
 
+// TODO (v0.1): selective expose structs and document them
 mod block;
 mod general;
 mod simple;
 
-pub use general::{exp, GeneralContinuedFraction};
-pub use simple::{ContinuedFraction, InfiniteContinuedFraction};
+pub use general::*;
+pub use simple::*;
