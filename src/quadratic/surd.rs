@@ -1,4 +1,6 @@
-use crate::cont_frac::ContinuedFraction;
+//! Implementation of qudratic irrational numbers
+
+use crate::cont_frac::simple::ContinuedFraction;
 use crate::traits::{Approximation, Computable, FromSqrt, FromSqrtError, WithSigned, WithUnsigned};
 #[cfg(feature = "complex")]
 use core::convert::TryFrom;
@@ -654,6 +656,7 @@ where
     }
 }
 
+// TODO: convert to continued fraction based on gaussian integers if `complex` is enabled
 #[cfg(feature = "complex")]
 impl<T: QuadraticSurdBase + WithUnsigned<Unsigned = U> + AddAssign, U> TryFrom<QuadraticSurd<T>>
     for ContinuedFraction<U>

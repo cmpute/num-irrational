@@ -1,3 +1,5 @@
+//! Implementation of quadratic integers
+
 /// Quadratic integer `a + bω` where `ω` = `sqrt(d)` or `(1+sqrt(d))/2`.
 ///
 /// The different between [QuadraticInt] and [QuadraticSurd][crate::QuadraticSurd] is that the operations for the

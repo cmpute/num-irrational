@@ -3,12 +3,12 @@
 //! All contants will have some of the following methods
 //! - `value()`: The value of the constant represented in the highest precision primitive float (f64)
 //! - `cfrac()`: The value of the constant represented in [InfiniteContinuedFraction]
-//! - `gfrac()`: The value of the constant represented in general continued fraction
+//! - `gfrac()`: The value of the constant represented in an interator that could be consumed by [GeneralContinuedFraction][crate::GeneralContinuedFraction]
 //!
 //! Note that to use these methods, you have to create a instance of the constant first.
 //!
 
-use super::cont_frac::InfiniteContinuedFraction;
+use crate::cont_frac::simple::InfiniteContinuedFraction;
 use num_integer::Integer;
 use num_rational::Ratio;
 use num_traits::{FromPrimitive, Num, NumRef, One, RefNum, Signed};
@@ -219,7 +219,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cont_frac::GeneralContinuedFraction;
+    use crate::cont_frac::general::GeneralContinuedFraction;
 
     #[test]
     fn cfrac_test() {

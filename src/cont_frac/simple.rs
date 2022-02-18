@@ -1,5 +1,7 @@
+//! Implementation of simple continued fractions
+
 use super::block::{Block, DualBlock};
-use crate::quadratic::{QuadraticSurd, QuadraticSurdBase};
+use crate::quadratic::surd::{QuadraticSurd, QuadraticSurdBase};
 use crate::traits::{Approximation, Computable, WithSigned, WithUnsigned};
 use core::convert::TryFrom;
 use core::str::FromStr;
@@ -226,6 +228,7 @@ impl<U> ContinuedFraction<U> {
     }
 }
 
+/// Iterator of coeffcients in a [ContinuedFraction]
 #[derive(Debug, Clone)]
 pub struct Coefficients<'a, T> {
     a_iter: Option<std::slice::Iter<'a, T>>, // None if aperiodic part has been consumed
@@ -272,9 +275,9 @@ impl<'a, T> Iterator for Coefficients<'a, T> {
     }
 }
 
-/// This iterator converts a coefficient iterator of simple continued fraction to
+/// Iterator that converts coefficients of simple continued fraction to
 /// coefficients of a general continued fraction. Then it can be consumed by
-/// `GeneralContinuedFraction`
+/// [GeneralContinuedFraction][crate::GeneralContinuedFraction]
 pub struct GeneralCoefficients<T> {
     coeffs: T,
     negative: bool, // store the sign
@@ -298,6 +301,7 @@ impl<'r, I: Iterator<Item = &'r T>, T: 'r + WithSigned<Signed = U> + Clone, U: S
     }
 }
 
+/// Iterator of convergents of a [ContinuedFraction]
 pub struct Convergents<'a, T> {
     coeffs: Coefficients<'a, T>,
     block: Block<T>,
@@ -326,6 +330,8 @@ impl<
     }
 }
 
+/// Iterator of coefficients in a [ContinuedFraction] with sign applied. This iterator
+/// can be used to construct a [InfiniteContinuedFraction]
 pub struct SignedCoefficients<T> {
     coeffs: T,
     negative: bool, // store the sign
@@ -802,8 +808,9 @@ impl_binop_for_ratio_surd!(impl Sub, sub);
 impl_binop_for_ratio_surd!(impl Mul, mul);
 impl_binop_for_ratio_surd!(impl Div, div);
 
-/// This trait represents a regular continued fraction with infinite
-/// coefficients. All operations here will be done iteratively
+/// Represents a simple continued fraction with infinite
+/// coefficients. It's a wrapper of an iterator that returns the continued fraction coefficients.
+/// Most operations of this struct will also return an iterator wrapped by this struct.
 #[derive(Clone, Copy)]
 pub struct InfiniteContinuedFraction<I: Iterator>(pub I);
 
@@ -869,6 +876,7 @@ where
     }
 }
 
+/// Iterator of [InfiniteContinuedFraction::homo()] result
 #[derive(Debug, Clone, Copy)]
 pub struct HomographicResult<I: Iterator<Item = T>, T> {
     block: Block<T>,
@@ -894,6 +902,7 @@ where
     }
 }
 
+/// Iterator of [InfiniteContinuedFraction::bihomo()] result
 #[derive(Debug, Clone, Copy)]
 pub struct BihomographicResult<X: Iterator<Item = T>, Y: Iterator<Item = T>, T> {
     block: DualBlock<T>,
@@ -949,7 +958,7 @@ where
 /// This trait provide conversion from iterator of ASCII chars to
 /// continued fraction. This can be used for accepting high-precision
 /// decimal, or infinite continued fraction representation
-pub trait ParseContinuedFraction {
+trait ParseContinuedFraction {
     // TODO: implement followings
     // fn parse_as_decimals() -> InfiniteContinuedFraction;
     // fn parse_as_cfrac() -> InfiniteContinuedFraction;
@@ -1146,11 +1155,11 @@ mod tests {
         // take()
         assert_eq!(
             (e.cfrac::<i32>() + (-2)).take(5),
-            ContinuedFraction::new(vec![0, 1, 2, 2], vec![], false)
+            ContinuedFraction::new(vec![0i32, 1, 2, 2], vec![], false)
         );
         assert_eq!(
             (e.cfrac::<i32>() + (-3)).take(5),
-            ContinuedFraction::new(vec![0, 3, 1, 1, 4], vec![], true)
+            ContinuedFraction::new(vec![0i32, 3, 1, 1, 4], vec![], true)
         );
     }
 
@@ -1160,7 +1169,7 @@ mod tests {
         let ep1_cf = e.cfrac::<i32>() + 1;
         assert_eq!(ep1_cf.0.take(5).collect::<Vec<_>>(), vec![3, 1, 2, 1, 1]);
 
-        let sq2 = ContinuedFraction::<u32>::new(vec![1], vec![2], false);
+        let sq2 = ContinuedFraction::<u32>::new(vec![1i32], vec![2], false);
         let sq2p1 = sq2.clone() + 1;
         assert_eq!(
             (sq2.expanded() + 1).0.take(5).collect::<Vec<_>>(),
