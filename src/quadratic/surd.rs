@@ -701,46 +701,71 @@ where
 impl<T: Integer + Signed + fmt::Display> fmt::Display for QuadraticSurd<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if f.alternate() && self.r == -T::one() {
-            // print √-1 as j if alternate flag is set
+            // print √-1 as i if alternate flag is set
+            let b_is_mone = self.b == -T::one();
             match (
                 self.a.is_zero(),
                 self.b.is_zero(),
                 self.b.is_one(),
+                b_is_mone,
                 self.c.is_one(),
             ) {
-                (true, true, _, _) => write!(f, "0"),
-                (true, false, true, true) => write!(f, "j"),
-                (true, false, false, true) => write!(f, "{}j", self.b),
-                (true, false, true, false) => write!(f, "j/{}", self.c),
-                (true, false, false, false) => write!(f, "{}j/{}", self.b, self.c),
-                (false, true, _, true) => write!(f, "{}", self.a),
-                (false, true, _, false) => write!(f, "{}/{}", self.a, self.c),
-                (false, false, true, true) => write!(f, "{} + j", self.a),
-                (false, false, true, false) => write!(f, "({} + j)/{}", self.a, self.c),
-                (false, false, false, true) => write!(f, "{} + {}j", self.a, self.b),
-                (false, false, false, false) => {
-                    write!(f, "({} + {}j)/{}", self.a, self.b, self.c)
+                (true, true, _, _, _) => write!(f, "0"),
+                (true, false, true, _, true) => write!(f, "i"),
+                (true, false, true, _, false) => write!(f, "i/{}", self.c),
+                (true, false, false, true, true) => write!(f, "-i"),
+                (true, false, false, true, false) => write!(f, "-i/{}", self.c),
+                (true, false, false, false, true) => write!(f, "{}i", self.b),
+                (true, false, false, false, false) => write!(f, "{}i/{}", self.b, self.c),
+                (false, true, _, _, true) => write!(f, "{}", self.a),
+                (false, true, _, _, false) => write!(f, "{}/{}", self.a, self.c),
+                (false, false, true, _, true) => write!(f, "{}+i", self.a),
+                (false, false, false, true, true) => write!(f, "{}-i", self.a),
+                (false, false, false, false, true) => if self.b.is_negative() {
+                    write!(f, "{}{}i", self.a, self.b)
+                } else {
+                    write!(f, "{}+{}i", self.a, self.b)
+                },
+                (false, false, true, _, false) => write!(f, "({}+i)/{}", self.a, self.c),
+                (false, false, false, true, false) => write!(f, "({}-i)/{}", self.a, self.c),
+                (false, false, false, false, false) => if self.b.is_negative() {
+                    write!(f, "({}{}i)/{}", self.a, self.b, self.c)
+                } else {
+                    write!(f, "({}+{}i)/{}", self.a, self.b, self.c)
                 }
             }
         } else {
+            // TODO: print √-5 as √5i if alternative flag is on. Implement this after refactor this function
+            let b_is_mone = self.b == -T::one();
             match (
                 self.a.is_zero(),
                 self.b.is_zero(),
                 self.b.is_one(),
+                b_is_mone,
                 self.c.is_one(),
             ) {
-                (true, true, _, _) => write!(f, "0"),
-                (true, false, true, true) => write!(f, "√{}", self.r),
-                (true, false, false, true) => write!(f, "{}√{}", self.b, self.r),
-                (true, false, true, false) => write!(f, "√{}/{}", self.r, self.c),
-                (true, false, false, false) => write!(f, "{}√{}/{}", self.b, self.r, self.c),
-                (false, true, _, true) => write!(f, "{}", self.a),
-                (false, true, _, false) => write!(f, "{}/{}", self.a, self.c),
-                (false, false, true, true) => write!(f, "{} + √{}", self.a, self.r),
-                (false, false, true, false) => write!(f, "({} + √{})/{}", self.a, self.r, self.c),
-                (false, false, false, true) => write!(f, "{} + {}√{}", self.a, self.b, self.r),
-                (false, false, false, false) => {
-                    write!(f, "({} + {}√{})/{}", self.a, self.b, self.r, self.c)
+                (true, true, _, _, _) => write!(f, "0"),
+                (true, false, true, _, true) => write!(f, "√{}", self.r),
+                (true, false, true, _, false) => write!(f, "√{}/{}", self.r, self.c),
+                (true, false, false, true, true) => write!(f, "-√{}", self.r),
+                (true, false, false, true, false) => write!(f, "-√{}/{}", self.r, self.c),
+                (true, false, false, false, true) => write!(f, "{}√{}", self.b, self.r),
+                (true, false, false, false, false) => write!(f, "{}√{}/{}", self.b, self.r, self.c),
+                (false, true, _, _, true) => write!(f, "{}", self.a),
+                (false, true, _, _, false) => write!(f, "{}/{}", self.a, self.c),
+                (false, false, true, _, true) => write!(f, "{}+√{}", self.a, self.r),
+                (false, false, false, true, true) => write!(f, "{}-√{}", self.a, self.r),
+                (false, false, false, false, true) => if self.b.is_negative() {
+                    write!(f, "{}{}√{}", self.a, self.b, self.r)
+                } else {
+                    write!(f, "{}+{}√{}", self.a, self.b, self.r)
+                },
+                (false, false, true, _, false) => write!(f, "({}+√{})/{}", self.a, self.r, self.c),
+                (false, false, false, true, false) => write!(f, "({}-√{})/{}", self.a, self.r, self.c),
+                (false, false, false, false, false) => if self.b.is_negative() {
+                    write!(f, "({}{}√{})/{}", self.a, self.b, self.r, self.c)
+                } else {
+                    write!(f, "({}+{}√{})/{}", self.a, self.b, self.r, self.c)
                 }
             }
         }
@@ -1435,6 +1460,32 @@ mod tests {
             cf_10_sq2_7
         );
     }
+
+    #[test]
+    fn formatting_test() {
+        assert_eq!(format!("{}", QuadraticSurd::<i32>::zero()), "0");
+        assert_eq!(format!("{}", QuadraticSurd::<i32>::one()), "1");
+        assert_eq!(format!("{}", QuadraticSurd::<i32>::from_sqrt(5).unwrap()), "√5");
+
+        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(1 , 1,1,5)), "1+√5");
+        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(1 ,-1,1,5)), "1-√5");
+        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(-1, 1,1,5)), "-1+√5");
+        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(-1,-1,1,5)), "-1-√5");
+        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(1 , 2,1,5)), "1+2√5");
+        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(1 ,-2,1,5)), "1-2√5");
+        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(-1, 2,1,5)), "-1+2√5");
+        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(-1,-2,1,5)), "-1-2√5");
+        assert_eq!(format!("{}", QuadraticSurd::<i32>::new( 1, 0,2,5)), "1/2");
+        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(-1, 0,2,5)), "-1/2");
+        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(1 , 1,2,5)), "(1+√5)/2");
+        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(1 ,-1,2,5)), "(1-√5)/2");
+        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(-1, 1,2,5)), "(-1+√5)/2");
+        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(-1,-1,2,5)), "(-1-√5)/2");
+        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(1 , 2,2,5)), "(1+2√5)/2");
+        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(1 ,-2,2,5)), "(1-2√5)/2");
+        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(-1, 2,2,5)), "(-1+2√5)/2");
+        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(-1,-2,2,5)), "(-1-2√5)/2");
+    }
 }
 
 #[cfg(test)]
@@ -1474,5 +1525,31 @@ mod complex_tests {
         let i = QuadraticSurd::from_sqrt(QuadraticSurd::from(-1i32)).unwrap();
         assert_eq!(sqhalfi * 2, sq2i);
         assert_eq!(sq2i * i, QuadraticSurd::from_sqrt(2i32).unwrap());
+    }
+
+    #[cfg(feature = "complex")]
+    #[test]
+    fn formatting_test() {
+        assert_eq!(format!("{}", QuadraticSurd::<i32>::zero()), "0");
+        assert_eq!(format!("{}", QuadraticSurd::<i32>::one()), "1");
+        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::from_sqrt(-1).unwrap()), "i");
+
+        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(1 , 1,1,-1)), "1+i");
+        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(1 ,-1,1,-1)), "1-i");
+        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(-1, 1,1,-1)), "-1+i");
+        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(-1,-1,1,-1)), "-1-i");
+        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(1 , 2,1,-1)), "1+2i");
+        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(1 ,-2,1,-1)), "1-2i");
+        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(-1, 2,1,-1)), "-1+2i");
+        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(-1,-2,1,-1)), "-1-2i");
+        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new( 1, 0,2,-1)), "1/2");
+        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(-1, 0,2,-1)), "-1/2");
+        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(1 , 1,2,-1)), "(1+i)/2");
+        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(1 ,-1,2,-1)), "(1-i)/2");
+        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(-1, 1,2,-1)), "(-1+i)/2");
+        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(-1,-1,2,-1)), "(-1-i)/2");
+        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(1 , 2,2,-1)), "(1+2i)/2");
+        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(1 ,-2,2,-1)), "(1-2i)/2");
+        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(-1, 2,2,-1)), "(-1+2i)/2");
     }
 }

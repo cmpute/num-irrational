@@ -33,6 +33,7 @@
 //! change some behavior of the operators on [QuadraticSurd].
 //! - `num-complex`: Enable converting [QuadraticSurd] to `num_complex::Complex`. You probably want to enable
 //! the `complex` feature at the same time.
+//! - `num-bigint`: Enable using big integers as the internal representation.
 //! 
 
 pub mod cont_frac;
