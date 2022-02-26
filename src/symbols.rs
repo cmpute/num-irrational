@@ -207,8 +207,7 @@ where
 
         // store values
         self.n += 1;
-        std::mem::swap(&mut self.qm2, &mut self.qm1);
-        self.qm1 = q;
+        self.qm2 = std::mem::replace(&mut self.qm1, q);
         self.sm1 = s;
         self.rm1 = rho;
 

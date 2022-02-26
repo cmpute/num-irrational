@@ -37,6 +37,11 @@ impl<T> QuadraticSurd<T> {
     pub(crate) const fn new_raw(a: T, b: T, c: T, r: T) -> Self {
         QuadraticSurd { a, b, c, r }
     }
+
+    /// Get return-only references to the components `(a, b, c, r)`
+    pub const fn parts(&self) -> (&T, &T, &T, &T) {
+        (&self.a, &self.b, &self.c, &self.r)
+    }
 }
 
 impl<T: Integer> QuadraticSurd<T> {

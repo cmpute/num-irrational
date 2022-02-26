@@ -1,6 +1,6 @@
 use num_integer::Integer;
 use num_traits::{CheckedAdd, CheckedMul, NumRef, One, RefNum, Zero};
-use std::mem::swap;
+use std::mem::replace;
 
 /// A block on the magic table for homographic operation computation of continued fractions
 /// The method is described in <https://crypto.stanford.edu/pbc/notes/contfrac/compute.html>
@@ -25,10 +25,8 @@ impl<T> Block<T> {
 
     /// push the latest convergent to the block
     pub fn update(&mut self, p: T, q: T) {
-        swap(&mut self.pm2, &mut self.pm1); // self.pm2 = self.pm1
-        swap(&mut self.qm2, &mut self.qm1); // self.qm2 = self.qm1
-        self.pm1 = p;
-        self.qm1 = q;
+        self.pm2 = replace(&mut self.pm1, p);
+        self.qm2 = replace(&mut self.qm1, q);
     }
 }
 
@@ -94,10 +92,8 @@ where
     pub fn reduce_recip(&mut self) -> Option<T> {
         match self.check_integer() {
             Ok((i, rm1, rm2)) => {
-                swap(&mut self.pm1, &mut self.qm1); // self.pm1 = self.qm1
-                swap(&mut self.pm2, &mut self.qm2); // self.pm2 = self.qm2
-                self.qm1 = rm1;
-                self.qm2 = rm2;
+                self.pm1 = replace(&mut self.qm1, rm1);
+                self.pm2 = replace(&mut self.qm2, rm2);
                 Some(i)
             }
             Err(_) => None,
@@ -187,28 +183,20 @@ impl<T> DualBlock<T> {
 
     /// push the latest convergent using x from right to the block
     pub fn update_right(&mut self, p1: T, q1: T, p2: T, q2: T) {
-        swap(&mut self.pm21, &mut self.pm11); // self.pm21 = self.pm11
-        swap(&mut self.qm21, &mut self.qm11); // self.qm21 = self.qm11
-        self.pm11 = p1;
-        self.qm11 = q1;
+        self.pm21 = replace(&mut self.pm11, p1);
+        self.qm21 = replace(&mut self.qm11, q1);
 
-        swap(&mut self.pm22, &mut self.pm12); // self.pm22 = self.pm12
-        swap(&mut self.qm22, &mut self.qm12); // self.qm22 = self.qm12
-        self.pm12 = p2;
-        self.qm12 = q2;
+        self.pm22 = replace(&mut self.pm12, p2);
+        self.qm22 = replace(&mut self.qm22, q2);
     }
 
     /// push the latest convergent using y from bottom to the block
     pub fn update_down(&mut self, p1: T, q1: T, p2: T, q2: T) {
-        swap(&mut self.pm12, &mut self.pm11); // self.pm12 = self.pm11
-        swap(&mut self.qm12, &mut self.qm11); // self.qm12 = self.qm11
-        self.pm11 = p1;
-        self.qm11 = q1;
+        self.pm12 = replace(&mut self.pm11, p1);
+        self.qm12 = replace(&mut self.qm11, q1);
 
-        swap(&mut self.pm22, &mut self.pm21); // self.pm22 = self.pm21
-        swap(&mut self.qm22, &mut self.qm21); // self.qm22 = self.qm21
-        self.pm21 = p2;
-        self.qm21 = q2;
+        self.pm22 = replace(&mut self.pm21, p2);
+        self.qm22 = replace(&mut self.qm21, q2);
     }
 }
 
@@ -264,14 +252,10 @@ where
     pub fn reduce_recip(&mut self) -> Result<T, (bool, bool)> {
         match self.check_integer() {
             Ok((i, r11, r12, r21, r22)) => {
-                swap(&mut self.pm11, &mut self.qm11);
-                self.qm11 = r11;
-                swap(&mut self.pm12, &mut self.qm12);
-                self.qm12 = r12;
-                swap(&mut self.pm21, &mut self.qm21);
-                self.qm21 = r21;
-                swap(&mut self.pm22, &mut self.qm22);
-                self.qm22 = r22;
+                self.pm11 = replace(&mut self.qm11, r11);
+                self.pm12 = replace(&mut self.qm12, r12);
+                self.pm21 = replace(&mut self.qm21, r21);
+                self.pm22 = replace(&mut self.qm22, r22);
                 Ok(i)
             }
             Err(f) => Err(f),

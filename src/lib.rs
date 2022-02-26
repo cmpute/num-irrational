@@ -1,4 +1,4 @@
-//! This crate provides representations of part of irrational numbers with following categories:
+//! This crate provides representations of irrational numbers within following categories:
 //! - Math constants (`pi`, `e`, etc.)
 //!   - Values and continued fraction representations
 //! - [Quadratic Numbers](https://en.wikipedia.org/wiki/Algebraic_number#Examples)
