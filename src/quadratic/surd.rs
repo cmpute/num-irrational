@@ -1,7 +1,9 @@
 //! Implementation of qudratic irrational numbers
 
 use crate::cont_frac::simple::ContinuedFraction;
-use crate::traits::{Approximation, Computable, FromSqrt, FromSqrtError, WithSigned, WithUnsigned};
+use crate::traits::{
+    Approximation, Computable, FromSqrt, FromSqrtError, SqrtErrorKind, WithSigned, WithUnsigned,
+};
 #[cfg(feature = "complex")]
 use core::convert::TryFrom;
 use core::ops::{Add, AddAssign, Div, Mul, Neg, Sub};
@@ -726,17 +728,21 @@ impl<T: Integer + Signed + fmt::Display> fmt::Display for QuadraticSurd<T> {
                 (false, true, _, _, false) => write!(f, "{}/{}", self.a, self.c),
                 (false, false, true, _, true) => write!(f, "{}+i", self.a),
                 (false, false, false, true, true) => write!(f, "{}-i", self.a),
-                (false, false, false, false, true) => if self.b.is_negative() {
-                    write!(f, "{}{}i", self.a, self.b)
-                } else {
-                    write!(f, "{}+{}i", self.a, self.b)
-                },
+                (false, false, false, false, true) => {
+                    if self.b.is_negative() {
+                        write!(f, "{}{}i", self.a, self.b)
+                    } else {
+                        write!(f, "{}+{}i", self.a, self.b)
+                    }
+                }
                 (false, false, true, _, false) => write!(f, "({}+i)/{}", self.a, self.c),
                 (false, false, false, true, false) => write!(f, "({}-i)/{}", self.a, self.c),
-                (false, false, false, false, false) => if self.b.is_negative() {
-                    write!(f, "({}{}i)/{}", self.a, self.b, self.c)
-                } else {
-                    write!(f, "({}+{}i)/{}", self.a, self.b, self.c)
+                (false, false, false, false, false) => {
+                    if self.b.is_negative() {
+                        write!(f, "({}{}i)/{}", self.a, self.b, self.c)
+                    } else {
+                        write!(f, "({}+{}i)/{}", self.a, self.b, self.c)
+                    }
                 }
             }
         } else {
@@ -760,17 +766,23 @@ impl<T: Integer + Signed + fmt::Display> fmt::Display for QuadraticSurd<T> {
                 (false, true, _, _, false) => write!(f, "{}/{}", self.a, self.c),
                 (false, false, true, _, true) => write!(f, "{}+√{}", self.a, self.r),
                 (false, false, false, true, true) => write!(f, "{}-√{}", self.a, self.r),
-                (false, false, false, false, true) => if self.b.is_negative() {
-                    write!(f, "{}{}√{}", self.a, self.b, self.r)
-                } else {
-                    write!(f, "{}+{}√{}", self.a, self.b, self.r)
-                },
+                (false, false, false, false, true) => {
+                    if self.b.is_negative() {
+                        write!(f, "{}{}√{}", self.a, self.b, self.r)
+                    } else {
+                        write!(f, "{}+{}√{}", self.a, self.b, self.r)
+                    }
+                }
                 (false, false, true, _, false) => write!(f, "({}+√{})/{}", self.a, self.r, self.c),
-                (false, false, false, true, false) => write!(f, "({}-√{})/{}", self.a, self.r, self.c),
-                (false, false, false, false, false) => if self.b.is_negative() {
-                    write!(f, "({}{}√{})/{}", self.a, self.b, self.r, self.c)
-                } else {
-                    write!(f, "({}+{}√{})/{}", self.a, self.b, self.r, self.c)
+                (false, false, false, true, false) => {
+                    write!(f, "({}-√{})/{}", self.a, self.r, self.c)
+                }
+                (false, false, false, false, false) => {
+                    if self.b.is_negative() {
+                        write!(f, "({}{}√{})/{}", self.a, self.b, self.r, self.c)
+                    } else {
+                        write!(f, "({}+{}√{})/{}", self.a, self.b, self.r, self.c)
+                    }
                 }
             }
         }
@@ -1199,10 +1211,13 @@ where
     for<'r> &'r T: RefNum<T>,
 {
     #[inline]
-    fn from_sqrt(target: T) -> Result<Self, FromSqrtError> {
+    fn from_sqrt(target: T) -> Result<Self, FromSqrtError<T>> {
         #[cfg(not(feature = "complex"))]
         if target.is_negative() {
-            return Err(FromSqrtError::Complex);
+            return Err(FromSqrtError {
+                data: target,
+                kind: SqrtErrorKind::Complex,
+            });
         }
         Ok(QuadraticSurd::new(T::zero(), T::one(), T::one(), target))
     }
@@ -1213,13 +1228,19 @@ where
     for<'r> &'r T: RefNum<T>,
 {
     #[inline]
-    fn from_sqrt(target: Ratio<T>) -> Result<Self, FromSqrtError> {
+    fn from_sqrt(target: Ratio<T>) -> Result<Self, FromSqrtError<Ratio<T>>> {
         #[cfg(not(feature = "complex"))]
         if target.is_negative() {
-            return Err(FromSqrtError::Complex);
+            return Err(FromSqrtError {
+                data: target,
+                kind: SqrtErrorKind::Complex,
+            });
         }
         if target.is_integer() {
-            return Self::from_sqrt(target.to_integer());
+            return Self::from_sqrt(target.to_integer()).map_err(|e| FromSqrtError {
+                data: Ratio::from(e.data),
+                kind: e.kind,
+            });
         }
 
         match target.numer().checked_mul(target.denom()) {
@@ -1229,7 +1250,10 @@ where
                 target.denom().clone(),
                 new_r,
             )),
-            None => Err(FromSqrtError::Overflow),
+            None => Err(FromSqrtError {
+                data: target,
+                kind: SqrtErrorKind::Overflow,
+            }),
         }
     }
 }
@@ -1239,15 +1263,23 @@ where
     for<'r> &'r T: RefNum<T>,
 {
     #[inline]
-    fn from_sqrt(target: QuadraticSurd<T>) -> Result<Self, FromSqrtError> {
+    fn from_sqrt(target: QuadraticSurd<T>) -> Result<Self, FromSqrtError<QuadraticSurd<T>>> {
         #[cfg(not(feature = "complex"))]
         if target.is_negative() {
-            return Err(FromSqrtError::Complex);
+            return Err(FromSqrtError {
+                data: target,
+                kind: SqrtErrorKind::Complex,
+            });
         }
 
         if target.is_rational() {
             match target.to_rational() {
-                Approximation::Exact(v) => return Self::from_sqrt(v),
+                Approximation::Exact(v) => {
+                    return Self::from_sqrt(v).map_err(|e| FromSqrtError {
+                        data: Self::from(e.data),
+                        kind: e.kind,
+                    })
+                }
                 _ => unreachable!(),
             };
         }
@@ -1262,12 +1294,28 @@ where
         let x_y = x / &y;
         let delta2 = &x_y * &x_y - &target.r;
         if delta2.is_negative() {
-            return Err(FromSqrtError::Unrepresentable);
+            // TODO (v0.2): How to support complex quadratic surd here?
+            return Err(FromSqrtError {
+                data: QuadraticSurd::from_rationals(x_y * &y, y, Ratio::from(target.r)),
+                kind: SqrtErrorKind::Unrepresentable,
+            });
         }
-        // TODO (v0.2): How to support complex quadratic surd here?
-        let sqrt_delta = Self::from_sqrt(delta2)?;
+
+        // TODO (v0.2): directly judge sqrt from numerator and denominator
+        let sqrt_delta = match Self::from_sqrt(delta2) {
+            Ok(sq) => sq,
+            Err(e) => {
+                return Err(FromSqrtError {
+                    data: QuadraticSurd::from_rationals(x_y * &y, y, Ratio::from(target.r)),
+                    kind: e.kind,
+                });
+            }
+        };
         if !sqrt_delta.is_integer() {
-            return Err(FromSqrtError::Unrepresentable);
+            return Err(FromSqrtError {
+                data: QuadraticSurd::from_rationals(x_y * &y, y, Ratio::from(target.r)),
+                kind: SqrtErrorKind::Unrepresentable,
+            });
         }
 
         let delta2 = match sqrt_delta.to_integer() {
@@ -1470,26 +1518,77 @@ mod tests {
     fn formatting_test() {
         assert_eq!(format!("{}", QuadraticSurd::<i32>::zero()), "0");
         assert_eq!(format!("{}", QuadraticSurd::<i32>::one()), "1");
-        assert_eq!(format!("{}", QuadraticSurd::<i32>::from_sqrt(5).unwrap()), "√5");
+        assert_eq!(
+            format!("{}", QuadraticSurd::<i32>::from_sqrt(5).unwrap()),
+            "√5"
+        );
 
-        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(1 , 1,1,5)), "1+√5");
-        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(1 ,-1,1,5)), "1-√5");
-        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(-1, 1,1,5)), "-1+√5");
-        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(-1,-1,1,5)), "-1-√5");
-        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(1 , 2,1,5)), "1+2√5");
-        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(1 ,-2,1,5)), "1-2√5");
-        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(-1, 2,1,5)), "-1+2√5");
-        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(-1,-2,1,5)), "-1-2√5");
-        assert_eq!(format!("{}", QuadraticSurd::<i32>::new( 1, 0,2,5)), "1/2");
-        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(-1, 0,2,5)), "-1/2");
-        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(1 , 1,2,5)), "(1+√5)/2");
-        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(1 ,-1,2,5)), "(1-√5)/2");
-        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(-1, 1,2,5)), "(-1+√5)/2");
-        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(-1,-1,2,5)), "(-1-√5)/2");
-        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(1 , 2,2,5)), "(1+2√5)/2");
-        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(1 ,-2,2,5)), "(1-2√5)/2");
-        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(-1, 2,2,5)), "(-1+2√5)/2");
-        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(-1,-2,2,5)), "(-1-2√5)/2");
+        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(1, 1, 1, 5)), "1+√5");
+        assert_eq!(
+            format!("{}", QuadraticSurd::<i32>::new(1, -1, 1, 5)),
+            "1-√5"
+        );
+        assert_eq!(
+            format!("{}", QuadraticSurd::<i32>::new(-1, 1, 1, 5)),
+            "-1+√5"
+        );
+        assert_eq!(
+            format!("{}", QuadraticSurd::<i32>::new(-1, -1, 1, 5)),
+            "-1-√5"
+        );
+        assert_eq!(
+            format!("{}", QuadraticSurd::<i32>::new(1, 2, 1, 5)),
+            "1+2√5"
+        );
+        assert_eq!(
+            format!("{}", QuadraticSurd::<i32>::new(1, -2, 1, 5)),
+            "1-2√5"
+        );
+        assert_eq!(
+            format!("{}", QuadraticSurd::<i32>::new(-1, 2, 1, 5)),
+            "-1+2√5"
+        );
+        assert_eq!(
+            format!("{}", QuadraticSurd::<i32>::new(-1, -2, 1, 5)),
+            "-1-2√5"
+        );
+        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(1, 0, 2, 5)), "1/2");
+        assert_eq!(
+            format!("{}", QuadraticSurd::<i32>::new(-1, 0, 2, 5)),
+            "-1/2"
+        );
+        assert_eq!(
+            format!("{}", QuadraticSurd::<i32>::new(1, 1, 2, 5)),
+            "(1+√5)/2"
+        );
+        assert_eq!(
+            format!("{}", QuadraticSurd::<i32>::new(1, -1, 2, 5)),
+            "(1-√5)/2"
+        );
+        assert_eq!(
+            format!("{}", QuadraticSurd::<i32>::new(-1, 1, 2, 5)),
+            "(-1+√5)/2"
+        );
+        assert_eq!(
+            format!("{}", QuadraticSurd::<i32>::new(-1, -1, 2, 5)),
+            "(-1-√5)/2"
+        );
+        assert_eq!(
+            format!("{}", QuadraticSurd::<i32>::new(1, 2, 2, 5)),
+            "(1+2√5)/2"
+        );
+        assert_eq!(
+            format!("{}", QuadraticSurd::<i32>::new(1, -2, 2, 5)),
+            "(1-2√5)/2"
+        );
+        assert_eq!(
+            format!("{}", QuadraticSurd::<i32>::new(-1, 2, 2, 5)),
+            "(-1+2√5)/2"
+        );
+        assert_eq!(
+            format!("{}", QuadraticSurd::<i32>::new(-1, -2, 2, 5)),
+            "(-1-2√5)/2"
+        );
     }
 }
 
@@ -1505,16 +1604,20 @@ mod complex_tests {
             QuadraticSurd::new_raw(0, 1, 1, 5)
         );
         assert_eq!(
-            QuadraticSurd::from_sqrt(-2).unwrap_err(),
-            FromSqrtError::Complex
+            QuadraticSurd::from_sqrt(-2).unwrap_err().kind,
+            SqrtErrorKind::Complex
         );
         assert_eq!(
-            QuadraticSurd::from_sqrt(Ratio::new(-1, 2)).unwrap_err(),
-            FromSqrtError::Complex
+            QuadraticSurd::from_sqrt(Ratio::new(-1, 2))
+                .unwrap_err()
+                .kind,
+            SqrtErrorKind::Complex
         );
         assert_eq!(
-            QuadraticSurd::from_sqrt(QuadraticSurd::from(-1)).unwrap_err(),
-            FromSqrtError::Complex
+            QuadraticSurd::from_sqrt(QuadraticSurd::from(-1))
+                .unwrap_err()
+                .kind,
+            SqrtErrorKind::Complex
         );
     }
 
@@ -1537,24 +1640,78 @@ mod complex_tests {
     fn formatting_test() {
         assert_eq!(format!("{}", QuadraticSurd::<i32>::zero()), "0");
         assert_eq!(format!("{}", QuadraticSurd::<i32>::one()), "1");
-        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::from_sqrt(-1).unwrap()), "i");
+        assert_eq!(
+            format!("{:#}", QuadraticSurd::<i32>::from_sqrt(-1).unwrap()),
+            "i"
+        );
 
-        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(1 , 1,1,-1)), "1+i");
-        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(1 ,-1,1,-1)), "1-i");
-        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(-1, 1,1,-1)), "-1+i");
-        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(-1,-1,1,-1)), "-1-i");
-        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(1 , 2,1,-1)), "1+2i");
-        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(1 ,-2,1,-1)), "1-2i");
-        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(-1, 2,1,-1)), "-1+2i");
-        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(-1,-2,1,-1)), "-1-2i");
-        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new( 1, 0,2,-1)), "1/2");
-        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(-1, 0,2,-1)), "-1/2");
-        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(1 , 1,2,-1)), "(1+i)/2");
-        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(1 ,-1,2,-1)), "(1-i)/2");
-        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(-1, 1,2,-1)), "(-1+i)/2");
-        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(-1,-1,2,-1)), "(-1-i)/2");
-        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(1 , 2,2,-1)), "(1+2i)/2");
-        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(1 ,-2,2,-1)), "(1-2i)/2");
-        assert_eq!(format!("{:#}", QuadraticSurd::<i32>::new(-1, 2,2,-1)), "(-1+2i)/2");
+        assert_eq!(
+            format!("{:#}", QuadraticSurd::<i32>::new(1, 1, 1, -1)),
+            "1+i"
+        );
+        assert_eq!(
+            format!("{:#}", QuadraticSurd::<i32>::new(1, -1, 1, -1)),
+            "1-i"
+        );
+        assert_eq!(
+            format!("{:#}", QuadraticSurd::<i32>::new(-1, 1, 1, -1)),
+            "-1+i"
+        );
+        assert_eq!(
+            format!("{:#}", QuadraticSurd::<i32>::new(-1, -1, 1, -1)),
+            "-1-i"
+        );
+        assert_eq!(
+            format!("{:#}", QuadraticSurd::<i32>::new(1, 2, 1, -1)),
+            "1+2i"
+        );
+        assert_eq!(
+            format!("{:#}", QuadraticSurd::<i32>::new(1, -2, 1, -1)),
+            "1-2i"
+        );
+        assert_eq!(
+            format!("{:#}", QuadraticSurd::<i32>::new(-1, 2, 1, -1)),
+            "-1+2i"
+        );
+        assert_eq!(
+            format!("{:#}", QuadraticSurd::<i32>::new(-1, -2, 1, -1)),
+            "-1-2i"
+        );
+        assert_eq!(
+            format!("{:#}", QuadraticSurd::<i32>::new(1, 0, 2, -1)),
+            "1/2"
+        );
+        assert_eq!(
+            format!("{:#}", QuadraticSurd::<i32>::new(-1, 0, 2, -1)),
+            "-1/2"
+        );
+        assert_eq!(
+            format!("{:#}", QuadraticSurd::<i32>::new(1, 1, 2, -1)),
+            "(1+i)/2"
+        );
+        assert_eq!(
+            format!("{:#}", QuadraticSurd::<i32>::new(1, -1, 2, -1)),
+            "(1-i)/2"
+        );
+        assert_eq!(
+            format!("{:#}", QuadraticSurd::<i32>::new(-1, 1, 2, -1)),
+            "(-1+i)/2"
+        );
+        assert_eq!(
+            format!("{:#}", QuadraticSurd::<i32>::new(-1, -1, 2, -1)),
+            "(-1-i)/2"
+        );
+        assert_eq!(
+            format!("{:#}", QuadraticSurd::<i32>::new(1, 2, 2, -1)),
+            "(1+2i)/2"
+        );
+        assert_eq!(
+            format!("{:#}", QuadraticSurd::<i32>::new(1, -2, 2, -1)),
+            "(1-2i)/2"
+        );
+        assert_eq!(
+            format!("{:#}", QuadraticSurd::<i32>::new(-1, 2, 2, -1)),
+            "(-1+2i)/2"
+        );
     }
 }

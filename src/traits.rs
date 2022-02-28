@@ -4,8 +4,14 @@ use num_rational::Ratio;
 use num_bigint::{BigInt, BigUint};
 
 /// Represents a possible error occured calling [FromSqrt]
+#[derive(Clone, Debug, PartialEq)]
+pub struct FromSqrtError<T> {
+    pub data: T,
+    pub kind: SqrtErrorKind,
+}
+
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum FromSqrtError {
+pub enum SqrtErrorKind {
     /// A proper representation will requires a integer type with more capacity
     Overflow,
     /// The square root is a complex number
@@ -19,7 +25,7 @@ pub enum FromSqrtError {
 /// In case there are multiple solution for square root,
 /// only canonical result will be returned
 pub trait FromSqrt<T>: Sized {
-    fn from_sqrt(t: T) -> Result<Self, FromSqrtError>;
+    fn from_sqrt(t: T) -> Result<Self, FromSqrtError<T>>;
 }
 
 /// Represents a number conversion with probably exact value.
