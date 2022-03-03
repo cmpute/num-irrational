@@ -15,7 +15,6 @@
 //!
 // TODO: support the hurwitz complex continued fraction
 
-// TODO (v0.1): selective expose structs and document them
 mod block;
 pub mod general;
 pub mod simple;

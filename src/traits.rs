@@ -10,6 +10,7 @@ pub struct FromSqrtError<T> {
     pub kind: SqrtErrorKind,
 }
 
+/// Types of [FromSqrt] errors
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum SqrtErrorKind {
     /// A proper representation will requires a integer type with more capacity
