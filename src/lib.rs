@@ -44,6 +44,7 @@ mod traits;
 pub use cont_frac::general::GeneralContinuedFraction;
 pub use cont_frac::simple::{ContinuedFraction, InfiniteContinuedFraction};
 pub use quadratic::surd::QuadraticSurd;
+pub use quadratic::integer::GaussianInt;
 pub use traits::*;
 
 /// [QuadraticSurd] with 32-bit integers

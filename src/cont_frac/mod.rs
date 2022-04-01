@@ -14,6 +14,7 @@
 //! - <https://github.com/blynn/frac>
 //!
 // TODO: support the hurwitz complex continued fraction
+// TODO: support async version of InfiniteContinuedFraction
 
 mod block;
 pub mod general;
