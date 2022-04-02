@@ -11,7 +11,7 @@ fn four<T: Add<Output=T> + One>() -> T {
 
 /// return -1 if v ≡ 0 mod 4, 0 if v ≡ 1 mod 4, 1 if v ≡ 2 or 3 mod 4
 #[inline]
-fn mod4d2<T: Signed + One>(v: &T) -> i8 where for<'r> &'r T: RefNum<T> {
+fn mod4d2<T: Signed>(v: &T) -> i8 where for<'r> &'r T: RefNum<T> {
     let m: T = v % four::<T>();
     if m.is_zero() {
         -1
@@ -32,7 +32,7 @@ fn mod4d2<T: Signed + One>(v: &T) -> i8 where for<'r> &'r T: RefNum<T> {
     }
 }
 
-fn div_round<T: Signed + NumRef + One>(x: T, y: &T) -> T
+fn div_round<T: Signed + NumRef>(x: T, y: &T) -> T
 where for<'r> &'r T: RefNum<T>, {
     if x.is_negative() ^ y.is_negative() {
         (x - y / (T::one() + T::one())) / y
@@ -64,7 +64,7 @@ impl<T: Sub<Output=T>> Sub for QuadraticIntCoeffs<T> {
     }
 }
 
-impl<T: Signed + NumRef + One> QuadraticOps<Self, &T, Self> for QuadraticIntCoeffs<T> where for<'r> &'r T: RefNum<T> {
+impl<T: Signed + NumRef> QuadraticOps<Self, &T, Self> for QuadraticIntCoeffs<T> where for<'r> &'r T: RefNum<T> {
     type Scalar = T;
 
     #[inline]
@@ -139,7 +139,7 @@ pub struct QuadraticInt<T> {
     discr: T,
 }
 
-impl<T: Signed + NumRef + One> QuadraticInt<T> where for<'r> &'r T: RefNum<T> {
+impl<T: Signed + NumRef> QuadraticInt<T> where for<'r> &'r T: RefNum<T> {
     /// Create a quadratic integer `a + bω`, where `ω` is `√r` or `(1+√r)/2`.
     /// Note that r must be not divisible by 4 (to be square free), otherwise the factor 4
     /// will be extracted from r to b.
@@ -161,6 +161,12 @@ impl<T: Signed + NumRef + One> QuadraticInt<T> where for<'r> &'r T: RefNum<T> {
     pub fn norm(self) -> T {
         self.coeffs.norm(&self.discr)
     }
+
+    /// Get the fundamental unit of the quadratic field ℚ[√d]
+    fn unit(d: T) -> Self {
+        // REF: http://www.numbertheory.org/gnubc/unit
+        unimplemented!()
+    }
 }
 
 // TODO: reduce root base for binary operations
@@ -181,7 +187,7 @@ impl<T: Sub<Output=T>> Sub for QuadraticInt<T> where for<'r> &'r T: RefNum<T> {
     }
 }
 
-impl<T: Signed + NumRef + One + Clone> Mul for QuadraticInt<T> where for<'r> &'r T: RefNum<T> {
+impl<T: Signed + NumRef> Mul for QuadraticInt<T> where for<'r> &'r T: RefNum<T> {
     type Output = Self;
     #[inline]
     fn mul(self, rhs: Self) -> Self::Output {
@@ -189,7 +195,7 @@ impl<T: Signed + NumRef + One + Clone> Mul for QuadraticInt<T> where for<'r> &'r
     }
 }
 
-impl<T: Signed + NumRef + One + Clone> Div for QuadraticInt<T> where for<'r> &'r T: RefNum<T> {
+impl<T: Signed + NumRef> Div for QuadraticInt<T> where for<'r> &'r T: RefNum<T> {
     type Output = Self;
     #[inline]
     fn div(self, rhs: Self) -> Self::Output {
@@ -197,14 +203,52 @@ impl<T: Signed + NumRef + One + Clone> Div for QuadraticInt<T> where for<'r> &'r
     }
 }
 
-#[cfg(complex)]
+#[cfg(feature = "complex")]
 mod complex {
-    use super::QuadraticIntCoeffs;
+    use super::*;
     pub struct GaussianInt<T> (QuadraticIntCoeffs<T>);
+
+    impl<T> GaussianInt<T> {
+        pub const fn new(re: T, im: T) -> Self {
+            Self(QuadraticIntCoeffs(re, im))
+        }
+    }
+
+    impl<T: Add<Output=T>> Add for GaussianInt<T> where for<'r> &'r T: RefNum<T> {
+        type Output = Self;
+        #[inline]
+        fn add(self, rhs: Self) -> Self::Output {
+            Self(self.0 + rhs.0)
+        }
+    }
+
+    impl<T: Sub<Output=T>> Sub for GaussianInt<T> where for<'r> &'r T: RefNum<T> {
+        type Output = Self;
+        #[inline]
+        fn sub(self, rhs: Self) -> Self::Output {
+            Self(self.0 - rhs.0)
+        }
+    }
+
+    impl<T: Signed + NumRef> Mul for GaussianInt<T> where for<'r> &'r T: RefNum<T> {
+        type Output = Self;
+        #[inline]
+        fn mul(self, rhs: Self) -> Self::Output {
+            Self(self.0.mul(rhs.0, &-T::one()))
+        }
+    }
+
+    impl<T: Signed + NumRef> Div for GaussianInt<T> where for<'r> &'r T: RefNum<T> {
+        type Output = Self;
+        #[inline]
+        fn div(self, rhs: Self) -> Self::Output {
+            Self(self.0.div(rhs.0, &-T::one()))
+        }
+    }
 }
 
-#[cfg(complex)]
-use complex::GaussianInt;
+#[cfg(feature = "complex")]
+pub use complex::GaussianInt;
 
 #[cfg(test)]
 mod tests {

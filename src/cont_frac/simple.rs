@@ -210,7 +210,7 @@ impl<U> ContinuedFraction<U> {
 
         if matches!(negative, None) {
             if matches!(p_coeffs.first(), Some(p) if p <= &T::zero()) {
-                // TODO (v0.2): how to handle negative coefficients in the periodic parts
+                // TODO: how to handle negative coefficients in the periodic parts
                 unimplemented!()
             } else {
                 negative = Some(negate);
@@ -610,7 +610,7 @@ impl<T: Integer + Clone + WithUnsigned<Unsigned = U>, U: Zero> From<Ratio<T>>
     }
 }
 
-// TODO (v0.2): expose this after implemented
+// TODO: expose this after implemented
 mod parse {
     use super::{ContinuedFraction, FromStr};
 
@@ -959,7 +959,7 @@ where
 /// continued fraction. This can be used for accepting high-precision
 /// decimal, or infinite continued fraction representation
 trait ParseContinuedFraction {
-    // TODO: implement followings
+    // TODO: implement followings and make the trait public
     // fn parse_as_decimals() -> InfiniteContinuedFraction;
     // fn parse_as_cfrac() -> InfiniteContinuedFraction;
 }

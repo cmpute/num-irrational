@@ -23,5 +23,4 @@ pub trait QuadraticOps<Rhs = Self, Discr = Self, Output = Self> : Add<Rhs, Outpu
     fn norm(self, discr: Discr) -> Self::Scalar;
 }
 
-// TODO: implement QuadraticNum for QuadraticSurdCoeffs and construct quadraticsurd based on that
 // TODO: create QuadraticAssignOps

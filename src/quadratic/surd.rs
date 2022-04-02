@@ -16,15 +16,16 @@ use super::QuadraticOps;
 
 use num_rational::Ratio;
 
-// TODO: is Integer required?
 /// A helper trait to define valid type that can be used for QuadraticSurd
-pub trait QuadraticSurdBase: Integer + NumRef + Clone + Roots + Signed {}
-impl<T: Integer + NumRef + Clone + Roots + Signed> QuadraticSurdBase for T {}
+pub trait QuadraticSurdBase: Integer + NumRef + Clone + Roots + Signed + fmt::Debug {}
+impl<T: Integer + NumRef + Clone + Roots + Signed + fmt::Debug> QuadraticSurdBase for T {}
 
 /// Underlying representation of a quadratic surd `(a + b*√r) / c` as (a,b,c).
 /// 
 /// Note that the representation won't be reduced (normalized) after operations.
-#[derive(Clone, Copy, Debug, Hash, PartialEq)]
+/// Therefore, the equality test will requires the coefficients to be completely same,
+/// rather than be equal numerically.
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct QuadraticSurdCoeffs<T> (pub T, pub T, pub T);
 
 impl<T: QuadraticSurdBase> Add for QuadraticSurdCoeffs<T> 
@@ -176,10 +177,6 @@ impl<T: QuadraticSurdBase> Div<T> for QuadraticSurdCoeffs<T> {
 /// A quadratic number represented as `(a + b*√r) / c`.
 /// If the support for complex number is enabled, then this struct can represent
 /// any quadratic integers.
-///
-/// Note that [Eq] is not implemented for quadratic surd, as the root is not ensured
-/// to be reduced to the square free form, thus it's possible that two surds
-/// representing the same value have different coefficients.
 #[derive(Hash, Clone, Debug, Copy)]
 pub struct QuadraticSurd<T> {
     coeffs: QuadraticSurdCoeffs<T>, // when reduced, coeffs.1 is zero if the surd is rational, coeffs.2 is always positive
@@ -449,8 +446,8 @@ where
     pub fn trunc(self) -> Self {
         self.panic_if_complex();
 
-        // TODO (v0.2): ensure the algorithm is correct
-        // TODO: truncate to gaussian integers if complex
+        // TODO: ensure the algorithm is correct
+        // TODO (v0.2): truncate to gaussian integers if complex
         let bneg = self.coeffs.1.is_negative();
         let br = sqrt(&self.coeffs.1 * &self.coeffs.1 * self.discr);
         let num = if bneg { self.coeffs.0 - br } else { self.coeffs.0 + br };
@@ -612,20 +609,32 @@ where
     for<'r> &'r T: RefNum<T>,
 {
     fn eq(&self, other: &Self) -> bool {
-        // shortcut if every components are matched
-        if self.coeffs == other.coeffs && self.discr == other.discr {
-            return true;
+        // shortcuts
+        if self.discr == other.discr {
+            return self.coeffs == other.coeffs;
         }
-        if self.discr == other.discr || self.discr.is_zero() || other.discr.is_zero() {
+        if self.discr.is_zero() || other.discr.is_zero() {
             return false;
         }
 
-        match reduce_bin_op(self.clone(), other.clone()) {
-            Some((l, r)) => l.coeffs == r.coeffs && l.discr == r.discr,
-            None => false,
+        let QuadraticSurdCoeffs (la, lb, lc) = &self.coeffs;
+        let QuadraticSurdCoeffs (ra, rb, rc) = &other.coeffs;
+
+        // first compare the rational part
+        // FIXME: handle overflow like num-rational
+        if la * rc != ra * lc {
+            return false
         }
+        // then compare the quadratic part
+        lb * lb * &self.discr * rc * rc == rb * rb * &other.discr * lc * lc
     }
 }
+
+impl<T: QuadraticSurdBase> Eq for QuadraticSurd<T>
+where
+    for<'r> &'r T: RefNum<T>, {}
+
+// TODO: implement PartialOrd
 
 impl<T> Into<(T, T, T, T)> for QuadraticSurd<T> {
     /// Deconstruct the quadratic surd `(a + b√r) / c` into tuple `(a,b,c,r)`
@@ -858,81 +867,80 @@ where
 
 impl<T: Integer + Signed + fmt::Display> fmt::Display for QuadraticSurd<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let QuadraticSurdCoeffs(a, b, c) = &self.coeffs;
         if f.alternate() && self.discr == -T::one() {
             // print √-1 as i if alternate flag is set
-            let b_is_mone = self.coeffs.1 == -T::one();
             match (
-                self.coeffs.0.is_zero(),
-                self.coeffs.1.is_zero(),
-                self.coeffs.1.is_one(),
-                b_is_mone,
-                self.coeffs.2.is_one(),
+                a.is_zero(),
+                b.is_zero(),
+                b.is_one(),
+                b == &-T::one(),
+                c.is_one(),
             ) {
                 (true, true, _, _, _) => write!(f, "0"),
                 (true, false, true, _, true) => write!(f, "i"),
-                (true, false, true, _, false) => write!(f, "i/{}", self.coeffs.2),
+                (true, false, true, _, false) => write!(f, "i/{}", c),
                 (true, false, false, true, true) => write!(f, "-i"),
-                (true, false, false, true, false) => write!(f, "-i/{}", self.coeffs.2),
-                (true, false, false, false, true) => write!(f, "{}i", self.coeffs.1),
-                (true, false, false, false, false) => write!(f, "{}i/{}", self.coeffs.1, self.coeffs.2),
-                (false, true, _, _, true) => write!(f, "{}", self.coeffs.0),
-                (false, true, _, _, false) => write!(f, "{}/{}", self.coeffs.0, self.coeffs.2),
-                (false, false, true, _, true) => write!(f, "{}+i", self.coeffs.0),
-                (false, false, false, true, true) => write!(f, "{}-i", self.coeffs.0),
+                (true, false, false, true, false) => write!(f, "-i/{}", c),
+                (true, false, false, false, true) => write!(f, "{}i", b),
+                (true, false, false, false, false) => write!(f, "{}i/{}", b, c),
+                (false, true, _, _, true) => write!(f, "{}", a),
+                (false, true, _, _, false) => write!(f, "{}/{}", a, c),
+                (false, false, true, _, true) => write!(f, "{}+i", a),
+                (false, false, false, true, true) => write!(f, "{}-i", a),
                 (false, false, false, false, true) => {
-                    if self.coeffs.1.is_negative() {
-                        write!(f, "{}{}i", self.coeffs.0, self.coeffs.1)
+                    if b.is_negative() {
+                        write!(f, "{}{}i", a, b)
                     } else {
-                        write!(f, "{}+{}i", self.coeffs.0, self.coeffs.1)
+                        write!(f, "{}+{}i", a, b)
                     }
                 }
-                (false, false, true, _, false) => write!(f, "({}+i)/{}", self.coeffs.0, self.coeffs.2),
-                (false, false, false, true, false) => write!(f, "({}-i)/{}", self.coeffs.0, self.coeffs.2),
+                (false, false, true, _, false) => write!(f, "({}+i)/{}", a, c),
+                (false, false, false, true, false) => write!(f, "({}-i)/{}", a, c),
                 (false, false, false, false, false) => {
-                    if self.coeffs.1.is_negative() {
-                        write!(f, "({}{}i)/{}", self.coeffs.0, self.coeffs.1, self.coeffs.2)
+                    if b.is_negative() {
+                        write!(f, "({}{}i)/{}", a, b, c)
                     } else {
-                        write!(f, "({}+{}i)/{}", self.coeffs.0, self.coeffs.1, self.coeffs.2)
+                        write!(f, "({}+{}i)/{}", a, b, c)
                     }
                 }
             }
         } else {
             // TODO: print √-5 as √5i if alternative flag is on. Implement this after refactor this function
-            let b_is_mone = self.coeffs.1 == -T::one();
             match (
-                self.coeffs.0.is_zero(),
-                self.coeffs.1.is_zero(),
-                self.coeffs.1.is_one(),
-                b_is_mone,
-                self.coeffs.2.is_one(),
+                a.is_zero(),
+                b.is_zero(),
+                b.is_one(),
+                b == &-T::one(),
+                c.is_one(),
             ) {
                 (true, true, _, _, _) => write!(f, "0"),
                 (true, false, true, _, true) => write!(f, "√{}", self.discr),
-                (true, false, true, _, false) => write!(f, "√{}/{}", self.discr, self.coeffs.2),
+                (true, false, true, _, false) => write!(f, "√{}/{}", self.discr, c),
                 (true, false, false, true, true) => write!(f, "-√{}", self.discr),
-                (true, false, false, true, false) => write!(f, "-√{}/{}", self.discr, self.coeffs.2),
-                (true, false, false, false, true) => write!(f, "{}√{}", self.coeffs.1, self.discr),
-                (true, false, false, false, false) => write!(f, "{}√{}/{}", self.coeffs.1, self.discr, self.coeffs.2),
-                (false, true, _, _, true) => write!(f, "{}", self.coeffs.0),
-                (false, true, _, _, false) => write!(f, "{}/{}", self.coeffs.0, self.coeffs.2),
-                (false, false, true, _, true) => write!(f, "{}+√{}", self.coeffs.0, self.discr),
-                (false, false, false, true, true) => write!(f, "{}-√{}", self.coeffs.0, self.discr),
+                (true, false, false, true, false) => write!(f, "-√{}/{}", self.discr, c),
+                (true, false, false, false, true) => write!(f, "{}√{}", b, self.discr),
+                (true, false, false, false, false) => write!(f, "{}√{}/{}", b, self.discr, c),
+                (false, true, _, _, true) => write!(f, "{}", a),
+                (false, true, _, _, false) => write!(f, "{}/{}", a, c),
+                (false, false, true, _, true) => write!(f, "{}+√{}", a, self.discr),
+                (false, false, false, true, true) => write!(f, "{}-√{}", a, self.discr),
                 (false, false, false, false, true) => {
-                    if self.coeffs.1.is_negative() {
-                        write!(f, "{}{}√{}", self.coeffs.0, self.coeffs.1, self.discr)
+                    if b.is_negative() {
+                        write!(f, "{}{}√{}", a, b, self.discr)
                     } else {
-                        write!(f, "{}+{}√{}", self.coeffs.0, self.coeffs.1, self.discr)
+                        write!(f, "{}+{}√{}", a, b, self.discr)
                     }
                 }
-                (false, false, true, _, false) => write!(f, "({}+√{})/{}", self.coeffs.0, self.discr, self.coeffs.2),
+                (false, false, true, _, false) => write!(f, "({}+√{})/{}", a, self.discr, c),
                 (false, false, false, true, false) => {
-                    write!(f, "({}-√{})/{}", self.coeffs.0, self.discr, self.coeffs.2)
+                    write!(f, "({}-√{})/{}", a, self.discr, c)
                 }
                 (false, false, false, false, false) => {
-                    if self.coeffs.1.is_negative() {
-                        write!(f, "({}{}√{})/{}", self.coeffs.0, self.coeffs.1, self.discr, self.coeffs.2)
+                    if b.is_negative() {
+                        write!(f, "({}{}√{})/{}", a, b, self.discr, c)
                     } else {
-                        write!(f, "({}+{}√{})/{}", self.coeffs.0, self.coeffs.1, self.discr, self.coeffs.2)
+                        write!(f, "({}+{}√{})/{}", a, b, self.discr, c)
                     }
                 }
             }
@@ -1038,6 +1046,7 @@ forward_binop!(impl Mul, Ratio<T>, mul);
 forward_binop!(impl Div, T, div);
 forward_binop!(impl Div, Ratio<T>, div);
 
+// TODO: implemented checked_add, checked_sub, checked_mul, checked_div
 impl<T: QuadraticSurdBase> Add for QuadraticSurd<T>
 where
     for<'r> &'r T: RefNum<T>,
@@ -1344,14 +1353,14 @@ where
         let x_y = x / &y;
         let delta2 = &x_y * &x_y - &target.discr;
         if delta2.is_negative() {
-            // TODO (v0.2): How to support complex quadratic surd here?
+            // TODO: How to support complex quadratic surd here?
             return Err(FromSqrtError {
                 data: QuadraticSurd::from_rationals(x_y * &y, y, Ratio::from(target.discr)),
                 kind: SqrtErrorKind::Unrepresentable,
             });
         }
 
-        // TODO (v0.2): directly judge sqrt from numerator and denominator
+        // TODO: directly judge sqrt from numerator and denominator
         let sqrt_delta = match Self::from_sqrt(delta2) {
             Ok(sq) => sq,
             Err(e) => {
