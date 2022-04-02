@@ -24,6 +24,7 @@ impl<T: Integer + NumRef + Clone + Roots + Signed> QuadraticSurdBase for T {}
 /// Underlying representation of a quadratic surd `(a + b*√r) / c` as (a,b,c).
 /// 
 /// Note that the representation won't be reduced (normalized) after operations.
+#[derive(Clone, Copy, Debug, Hash, PartialEq)]
 pub struct QuadraticSurdCoeffs<T> (pub T, pub T, pub T);
 
 impl<T: QuadraticSurdBase> Add for QuadraticSurdCoeffs<T> 
@@ -181,21 +182,19 @@ impl<T: QuadraticSurdBase> Div<T> for QuadraticSurdCoeffs<T> {
 /// representing the same value have different coefficients.
 #[derive(Hash, Clone, Debug, Copy)]
 pub struct QuadraticSurd<T> {
-    a: T,
-    b: T, // zero when reduced if the surd is a rational number
-    c: T, // positive when reduced
-    r: T, // zero when reduced if the surd is a rational number
+    coeffs: QuadraticSurdCoeffs<T>, // when reduced, coeffs.1 is zero if the surd is rational, coeffs.2 is always positive
+    discr: T // when reduced, discriminant is zero if the surd is rational
 }
 
 impl<T> QuadraticSurd<T> {
     #[inline]
     pub(crate) const fn new_raw(a: T, b: T, c: T, r: T) -> Self {
-        QuadraticSurd { a, b, c, r }
+        Self { coeffs: QuadraticSurdCoeffs(a, b, c), discr: r }
     }
 
     /// Get return-only references to the components `(a, b, c, r)`
     pub const fn parts(&self) -> (&T, &T, &T, &T) {
-        (&self.a, &self.b, &self.c, &self.r)
+        (&self.coeffs.0, &self.coeffs.1, &self.coeffs.2, &self.discr)
     }
 }
 
@@ -203,33 +202,33 @@ impl<T: Integer> QuadraticSurd<T> {
     /// Determine if the surd is an integer
     #[inline]
     pub fn is_integer(&self) -> bool {
-        self.r >= T::zero() && self.c.is_one() && self.b.is_zero()
+        self.coeffs.2.is_one() && self.is_rational()
     }
 
     /// Determine if the surd is a rational number
     #[inline]
     pub fn is_rational(&self) -> bool {
-        self.b.is_zero() || self.r.is_zero()
+        self.coeffs.1.is_zero() || self.discr.is_zero()
     }
 
     /// Determine if the surd is a complex number
     #[inline]
     #[cfg(feature = "complex")]
     pub fn is_complex(&self) -> bool {
-        self.r < T::zero()
+        self.discr < T::zero()
     }
 
     /// Determine if the quadratic number has no rational part (i.e. a = 0, b != 0)
     #[inline]
     pub fn is_pure(&self) -> bool {
-        self.a.is_zero() && !self.b.is_zero()
+        self.coeffs.0.is_zero() && !self.coeffs.1.is_zero()
     }
 
     #[inline]
     fn panic_if_complex(&self) {
         // only need to check when we allow construction of complex surd number
         #[cfg(feature = "complex")]
-        if self.r < T::zero() {
+        if self.discr < T::zero() {
             panic!("operation not supported on complex numbers");
         }
     }
@@ -240,12 +239,7 @@ impl<T: Integer> From<T> for QuadraticSurd<T> {
     /// The square root base will be zero.
     #[inline]
     fn from(t: T) -> Self {
-        QuadraticSurd {
-            a: t,
-            b: T::zero(),
-            c: T::one(),
-            r: T::zero(),
-        }
+        Self { coeffs: QuadraticSurdCoeffs(t, T::zero(), T::one()), discr: T::zero() }
     }
 }
 
@@ -255,12 +249,7 @@ impl<T: Integer> From<Ratio<T>> for QuadraticSurd<T> {
     #[inline]
     fn from(t: Ratio<T>) -> Self {
         let (a, c) = t.into();
-        QuadraticSurd {
-            a,
-            b: T::zero(),
-            c,
-            r: T::zero(),
-        }
+        Self { coeffs: QuadraticSurdCoeffs(a, T::zero(), c), discr: T::zero() }
     }
 }
 
@@ -270,50 +259,50 @@ where
 {
     // Simplify the surd into normalized form
     fn reduce(&mut self) {
-        if self.c.is_zero() {
+        if self.coeffs.2.is_zero() {
             panic!("denominator is zero");
         }
 
         // ensure b, r are zeros at the same time
-        if self.b.is_zero() {
-            self.r = T::zero();
+        if self.coeffs.1.is_zero() {
+            self.discr = T::zero();
         }
 
         // test if the surd is rational
-        let root = sqrt(self.r.abs());
-        if &root * &root == self.r {
-            if self.r.is_negative() {
-                self.a = T::zero();
-                self.b = &self.b * root;
-                self.r = -T::one();
+        let root = sqrt(self.discr.abs());
+        if &root * &root == self.discr {
+            if self.discr.is_negative() {
+                self.coeffs.0 = T::zero();
+                self.coeffs.1 = &self.coeffs.1 * root;
+                self.discr = -T::one();
             } else {
-                self.a = &self.a + &self.b * root;
-                self.b = T::zero();
-                self.r = T::zero();
+                self.coeffs.0 = &self.coeffs.0 + &self.coeffs.1 * root;
+                self.coeffs.1 = T::zero();
+                self.discr = T::zero();
             }
         }
 
         // reduce common divisor
-        let mut g_ac = self.a.gcd(&self.c);
-        let g_acr = (&g_ac * &g_ac).gcd(&self.r); // test if squared factor of c can divide r
+        let mut g_ac = self.coeffs.0.gcd(&self.coeffs.2);
+        let g_acr = (&g_ac * &g_ac).gcd(&self.discr); // test if squared factor of c can divide r
         let groot = sqrt(g_acr.clone());
         if &groot * &groot == g_acr {
-            self.r = &self.r / &g_acr;
-            self.a = &self.a / &groot;
-            self.c = &self.c / &groot;
+            self.discr = &self.discr / &g_acr;
+            self.coeffs.0 = &self.coeffs.0 / &groot;
+            self.coeffs.2 = &self.coeffs.2 / &groot;
             g_ac = &g_ac / groot;
         }
 
-        let g_abc = g_ac.gcd(&self.b);
-        self.a = &self.a / &g_abc;
-        self.b = &self.b / &g_abc;
-        self.c = &self.c / g_abc;
+        let g_abc = g_ac.gcd(&self.coeffs.1);
+        self.coeffs.0 = &self.coeffs.0 / &g_abc;
+        self.coeffs.1 = &self.coeffs.1 / &g_abc;
+        self.coeffs.2 = &self.coeffs.2 / g_abc;
 
         // keep denom positive
-        if self.c < T::zero() {
-            self.a = T::zero() - &self.a;
-            self.b = T::zero() - &self.b;
-            self.c = T::zero() - &self.c;
+        if self.coeffs.2 < T::zero() {
+            self.coeffs.0 = T::zero() - &self.coeffs.0;
+            self.coeffs.1 = T::zero() - &self.coeffs.1;
+            self.coeffs.2 = T::zero() - &self.coeffs.2;
         }
     }
 
@@ -324,14 +313,14 @@ where
             return self;
         }
 
-        let (quo, rem) = self.r.div_rem(&hint);
+        let (quo, rem) = self.discr.div_rem(&hint);
         if rem.is_zero() {
             // if hint is actually a factor
             let root = sqrt(hint.clone());
             if &root * &root == hint {
                 // if hint is a square number
-                let g = root.gcd(&self.a).gcd(&self.c);
-                return QuadraticSurd::new_raw(self.a / &g, self.b * root / &g, self.c / g, quo);
+                let g = root.gcd(&self.coeffs.0).gcd(&self.coeffs.2);
+                return QuadraticSurd::new_raw(self.coeffs.0 / &g, self.coeffs.1 * root / &g, self.coeffs.2 / g, quo);
             }
         }
 
@@ -350,6 +339,18 @@ where
         }
 
         let mut ret = QuadraticSurd::new_raw(a, b, c, r);
+        ret.reduce();
+        ret
+    }
+
+    #[inline]
+    pub fn from_coeffs(coeffs: QuadraticSurdCoeffs<T>, r: T) -> Self {
+        #[cfg(not(feature = "complex"))]
+        if r.is_negative() {
+            panic!("Negative root is not supported without the `complex` feature");
+        }
+
+        let mut ret = Self { coeffs, discr: r };
         ret.reduce();
         ret
     }
@@ -404,38 +405,35 @@ where
     /// Returns the reciprocal of the surd
     #[inline]
     pub fn recip(self) -> Self {
-        let aa = &self.a * &self.a;
-        let bb = &self.b * &self.b;
+        let QuadraticSurdCoeffs (a, b, c) = self.coeffs;
+        let aa = &a * &a;
+        let bb = &b * &b;
         QuadraticSurd::new(
-            -(&self.c * self.a),
-            self.c * self.b,
-            bb * &self.r - aa,
-            self.r,
+            -(&c * a),
+            c * b,
+            bb * &self.discr - aa,
+            self.discr,
         )
     }
 
     /// `.recip()` with reference
     #[inline]
     pub fn recip_ref(&self) -> Self {
-        let aa = &self.a * &self.a;
-        let bb = &self.b * &self.b;
+        let QuadraticSurdCoeffs (a, b, c) = &self.coeffs;
+        let aa = a * a;
+        let bb = b * b;
         QuadraticSurd::new(
-            -(&self.c * &self.a),
-            &self.c * &self.b,
-            bb * &self.r - aa,
-            self.r.clone(),
+            -(c * a),
+            c * b,
+            bb * &self.discr - aa,
+            self.discr.clone(),
         )
     }
 
     /// Return the conjugate of the surd, i.e. `(a - b√r) / c`
     #[inline]
     pub fn conj(self) -> Self {
-        QuadraticSurd {
-            a: self.a,
-            b: -self.b,
-            c: self.c,
-            r: self.r,
-        }
+        Self { coeffs: self.coeffs.conj(&self.discr), discr: self.discr }
     }
 
     /// `.conj()` with reference
@@ -453,10 +451,10 @@ where
 
         // TODO (v0.2): ensure the algorithm is correct
         // TODO: truncate to gaussian integers if complex
-        let bneg = self.b.is_negative();
-        let br = sqrt(&self.b * &self.b * self.r);
-        let num = if bneg { self.a - br } else { self.a + br };
-        return Self::from(num / self.c);
+        let bneg = self.coeffs.1.is_negative();
+        let br = sqrt(&self.coeffs.1 * &self.coeffs.1 * self.discr);
+        let num = if bneg { self.coeffs.0 - br } else { self.coeffs.0 + br };
+        return Self::from(num / self.coeffs.2);
     }
 
     /// `.trunc()` with reference
@@ -486,13 +484,13 @@ where
     /// Get the numerator of the surd
     #[inline]
     pub fn numer(&self) -> Self {
-        Self::new_raw(self.a.clone(), self.b.clone(), T::one(), self.r.clone())
+        Self::new_raw(self.coeffs.0.clone(), self.coeffs.1.clone(), T::one(), self.discr.clone())
     }
 
     /// Get the denumerator of the surd
     #[inline]
     pub fn denom(&self) -> Self {
-        Self::from(self.c.clone())
+        Self::from(self.coeffs.2.clone())
     }
 
     /// Converts to an integer, rounding towards zero
@@ -504,9 +502,9 @@ where
         self.panic_if_complex();
 
         if self.is_integer() {
-            Approximation::Exact(self.a.clone())
+            Approximation::Exact(self.coeffs.0.clone())
         } else {
-            Approximation::Approximated(self.trunc_ref().a)
+            Approximation::Approximated(self.trunc_ref().coeffs.0)
         }
     }
 
@@ -518,12 +516,12 @@ where
     pub fn to_rational(&self) -> Approximation<Ratio<T>> {
         self.panic_if_complex();
 
-        if self.r.is_zero() {
-            Approximation::Exact(Ratio::new_raw(self.a.clone(), self.c.clone()))
+        if self.discr.is_zero() {
+            Approximation::Exact(Ratio::new_raw(self.coeffs.0.clone(), self.coeffs.2.clone()))
         } else {
             Approximation::Approximated(Ratio::new_raw(
-                &self.a + sqrt(&self.b * &self.b * &self.r),
-                self.c.clone(),
+                &self.coeffs.0 + sqrt(&self.coeffs.1 * &self.coeffs.1 * &self.discr),
+                self.coeffs.2.clone(),
             ))
         }
     }
@@ -535,18 +533,18 @@ where
     pub fn floor(self) -> Self {
         self.panic_if_complex();
 
-        let br = sqrt(&self.b * &self.b * &self.r);
-        let num = if self.b >= T::zero() {
-            &self.a + br
+        let br = sqrt(&self.coeffs.1 * &self.coeffs.1 * &self.discr);
+        let num = if self.coeffs.1 >= T::zero() {
+            &self.coeffs.0 + br
         } else {
-            &self.a - br - T::one()
+            &self.coeffs.0 - br - T::one()
         };
         let num = if num >= T::zero() {
             num
         } else {
-            num - &self.c + T::one()
+            num - &self.coeffs.2 + T::one()
         };
-        return Self::from(num / &self.c);
+        return Self::from(num / &self.coeffs.2);
     }
 
     /// `.floor()` with reference
@@ -565,20 +563,20 @@ where
     pub fn is_positive(&self) -> bool {
         self.panic_if_complex();
 
-        if self.b.is_zero() {
-            self.a.is_positive()
-        } else if self.b.is_positive() {
-            if self.a.is_positive() {
+        if self.coeffs.1.is_zero() {
+            self.coeffs.0.is_positive()
+        } else if self.coeffs.1.is_positive() {
+            if self.coeffs.0.is_positive() {
                 true
             } else {
-                &self.a * &self.a < &self.b * &self.b * &self.r
+                &self.coeffs.0 * &self.coeffs.0 < &self.coeffs.1 * &self.coeffs.1 * &self.discr
             }
         } else {
-            // self.b.is_negative()
-            if !self.a.is_positive() {
+            // self.coeffs.1.is_negative()
+            if !self.coeffs.0.is_positive() {
                 false
             } else {
-                &self.a * &self.a > &self.b * &self.b * &self.r
+                &self.coeffs.0 * &self.coeffs.0 > &self.coeffs.1 * &self.coeffs.1 * &self.discr
             }
         }
     }
@@ -590,20 +588,20 @@ where
     pub fn is_negative(&self) -> bool {
         self.panic_if_complex();
 
-        if self.b.is_zero() {
-            self.a.is_negative()
-        } else if self.b.is_negative() {
-            if self.a.is_negative() {
+        if self.coeffs.1.is_zero() {
+            self.coeffs.0.is_negative()
+        } else if self.coeffs.1.is_negative() {
+            if self.coeffs.0.is_negative() {
                 true
             } else {
-                &self.a * &self.a < &self.b * &self.b * &self.r
+                &self.coeffs.0 * &self.coeffs.0 < &self.coeffs.1 * &self.coeffs.1 * &self.discr
             }
         } else {
-            // self.b.is_positive()
-            if !self.a.is_negative() {
+            // self.coeffs.1.is_positive()
+            if !self.coeffs.0.is_negative() {
                 false
             } else {
-                &self.a * &self.a > &self.b * &self.b * &self.r
+                &self.coeffs.0 * &self.coeffs.0 > &self.coeffs.1 * &self.coeffs.1 * &self.discr
             }
         }
     }
@@ -615,15 +613,15 @@ where
 {
     fn eq(&self, other: &Self) -> bool {
         // shortcut if every components are matched
-        if self.a == other.a && self.b == other.b && self.c == other.c && self.r == other.r {
+        if self.coeffs == other.coeffs && self.discr == other.discr {
             return true;
         }
-        if self.r == other.r || self.r.is_zero() || other.r.is_zero() {
+        if self.discr == other.discr || self.discr.is_zero() || other.discr.is_zero() {
             return false;
         }
 
         match reduce_bin_op(self.clone(), other.clone()) {
-            Some((l, r)) => l.a == r.a && l.b == r.b && l.c == r.c && l.r == r.r,
+            Some((l, r)) => l.coeffs == r.coeffs && l.discr == r.discr,
             None => false,
         }
     }
@@ -632,7 +630,7 @@ where
 impl<T> Into<(T, T, T, T)> for QuadraticSurd<T> {
     /// Deconstruct the quadratic surd `(a + b√r) / c` into tuple `(a,b,c,r)`
     fn into(self) -> (T, T, T, T) {
-        (self.a, self.b, self.c, self.r)
+        (self.coeffs.0, self.coeffs.1, self.coeffs.2, self.discr)
     }
 }
 
@@ -655,10 +653,10 @@ where
             let p = T::from_u8(p).unwrap();
             if let Some(p2) = p.checked_mul(&p) {
                 loop {
-                    let (quo, rem) = self.r.div_rem(&p2);
+                    let (quo, rem) = self.discr.div_rem(&p2);
                     if rem.is_zero() {
-                        self.r = quo;
-                        self.b = &self.b * &p;
+                        self.discr = quo;
+                        self.coeffs.1 = &self.coeffs.1 * &p;
                         // common factors between a, b, c will be handled by reduce()
                     } else {
                         break;
@@ -809,9 +807,9 @@ where
 {
     fn from(s: QuadraticSurd<T>) -> Self {
         if s.is_negative() {
-            quadsurd_to_contfrac(-s.a, -s.b, s.c, s.r, true)
+            quadsurd_to_contfrac(-s.coeffs.0, -s.coeffs.1, s.coeffs.2, s.discr, true)
         } else {
-            quadsurd_to_contfrac(s.a, s.b, s.c, s.r, false)
+            quadsurd_to_contfrac(s.coeffs.0, s.coeffs.1, s.coeffs.2, s.discr, false)
         }
     }
 }
@@ -826,13 +824,13 @@ where
     type Error = ();
 
     fn try_from(s: QuadraticSurd<T>) -> Result<Self, ()> {
-        if s.r.is_negative() {
+        if s.discr.is_negative() {
             Err(())
         } else {
             if s.is_negative() {
-                Ok(quadsurd_to_contfrac(-s.a, -s.b, s.c, s.r, true))
+                Ok(quadsurd_to_contfrac(-s.coeffs.0, -s.coeffs.1, s.coeffs.2, s.discr, true))
             } else {
-                Ok(quadsurd_to_contfrac(s.a, s.b, s.c, s.r, false))
+                Ok(quadsurd_to_contfrac(s.coeffs.0, s.coeffs.1, s.coeffs.2, s.discr, false))
             }
         }
     }
@@ -860,81 +858,81 @@ where
 
 impl<T: Integer + Signed + fmt::Display> fmt::Display for QuadraticSurd<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if f.alternate() && self.r == -T::one() {
+        if f.alternate() && self.discr == -T::one() {
             // print √-1 as i if alternate flag is set
-            let b_is_mone = self.b == -T::one();
+            let b_is_mone = self.coeffs.1 == -T::one();
             match (
-                self.a.is_zero(),
-                self.b.is_zero(),
-                self.b.is_one(),
+                self.coeffs.0.is_zero(),
+                self.coeffs.1.is_zero(),
+                self.coeffs.1.is_one(),
                 b_is_mone,
-                self.c.is_one(),
+                self.coeffs.2.is_one(),
             ) {
                 (true, true, _, _, _) => write!(f, "0"),
                 (true, false, true, _, true) => write!(f, "i"),
-                (true, false, true, _, false) => write!(f, "i/{}", self.c),
+                (true, false, true, _, false) => write!(f, "i/{}", self.coeffs.2),
                 (true, false, false, true, true) => write!(f, "-i"),
-                (true, false, false, true, false) => write!(f, "-i/{}", self.c),
-                (true, false, false, false, true) => write!(f, "{}i", self.b),
-                (true, false, false, false, false) => write!(f, "{}i/{}", self.b, self.c),
-                (false, true, _, _, true) => write!(f, "{}", self.a),
-                (false, true, _, _, false) => write!(f, "{}/{}", self.a, self.c),
-                (false, false, true, _, true) => write!(f, "{}+i", self.a),
-                (false, false, false, true, true) => write!(f, "{}-i", self.a),
+                (true, false, false, true, false) => write!(f, "-i/{}", self.coeffs.2),
+                (true, false, false, false, true) => write!(f, "{}i", self.coeffs.1),
+                (true, false, false, false, false) => write!(f, "{}i/{}", self.coeffs.1, self.coeffs.2),
+                (false, true, _, _, true) => write!(f, "{}", self.coeffs.0),
+                (false, true, _, _, false) => write!(f, "{}/{}", self.coeffs.0, self.coeffs.2),
+                (false, false, true, _, true) => write!(f, "{}+i", self.coeffs.0),
+                (false, false, false, true, true) => write!(f, "{}-i", self.coeffs.0),
                 (false, false, false, false, true) => {
-                    if self.b.is_negative() {
-                        write!(f, "{}{}i", self.a, self.b)
+                    if self.coeffs.1.is_negative() {
+                        write!(f, "{}{}i", self.coeffs.0, self.coeffs.1)
                     } else {
-                        write!(f, "{}+{}i", self.a, self.b)
+                        write!(f, "{}+{}i", self.coeffs.0, self.coeffs.1)
                     }
                 }
-                (false, false, true, _, false) => write!(f, "({}+i)/{}", self.a, self.c),
-                (false, false, false, true, false) => write!(f, "({}-i)/{}", self.a, self.c),
+                (false, false, true, _, false) => write!(f, "({}+i)/{}", self.coeffs.0, self.coeffs.2),
+                (false, false, false, true, false) => write!(f, "({}-i)/{}", self.coeffs.0, self.coeffs.2),
                 (false, false, false, false, false) => {
-                    if self.b.is_negative() {
-                        write!(f, "({}{}i)/{}", self.a, self.b, self.c)
+                    if self.coeffs.1.is_negative() {
+                        write!(f, "({}{}i)/{}", self.coeffs.0, self.coeffs.1, self.coeffs.2)
                     } else {
-                        write!(f, "({}+{}i)/{}", self.a, self.b, self.c)
+                        write!(f, "({}+{}i)/{}", self.coeffs.0, self.coeffs.1, self.coeffs.2)
                     }
                 }
             }
         } else {
             // TODO: print √-5 as √5i if alternative flag is on. Implement this after refactor this function
-            let b_is_mone = self.b == -T::one();
+            let b_is_mone = self.coeffs.1 == -T::one();
             match (
-                self.a.is_zero(),
-                self.b.is_zero(),
-                self.b.is_one(),
+                self.coeffs.0.is_zero(),
+                self.coeffs.1.is_zero(),
+                self.coeffs.1.is_one(),
                 b_is_mone,
-                self.c.is_one(),
+                self.coeffs.2.is_one(),
             ) {
                 (true, true, _, _, _) => write!(f, "0"),
-                (true, false, true, _, true) => write!(f, "√{}", self.r),
-                (true, false, true, _, false) => write!(f, "√{}/{}", self.r, self.c),
-                (true, false, false, true, true) => write!(f, "-√{}", self.r),
-                (true, false, false, true, false) => write!(f, "-√{}/{}", self.r, self.c),
-                (true, false, false, false, true) => write!(f, "{}√{}", self.b, self.r),
-                (true, false, false, false, false) => write!(f, "{}√{}/{}", self.b, self.r, self.c),
-                (false, true, _, _, true) => write!(f, "{}", self.a),
-                (false, true, _, _, false) => write!(f, "{}/{}", self.a, self.c),
-                (false, false, true, _, true) => write!(f, "{}+√{}", self.a, self.r),
-                (false, false, false, true, true) => write!(f, "{}-√{}", self.a, self.r),
+                (true, false, true, _, true) => write!(f, "√{}", self.discr),
+                (true, false, true, _, false) => write!(f, "√{}/{}", self.discr, self.coeffs.2),
+                (true, false, false, true, true) => write!(f, "-√{}", self.discr),
+                (true, false, false, true, false) => write!(f, "-√{}/{}", self.discr, self.coeffs.2),
+                (true, false, false, false, true) => write!(f, "{}√{}", self.coeffs.1, self.discr),
+                (true, false, false, false, false) => write!(f, "{}√{}/{}", self.coeffs.1, self.discr, self.coeffs.2),
+                (false, true, _, _, true) => write!(f, "{}", self.coeffs.0),
+                (false, true, _, _, false) => write!(f, "{}/{}", self.coeffs.0, self.coeffs.2),
+                (false, false, true, _, true) => write!(f, "{}+√{}", self.coeffs.0, self.discr),
+                (false, false, false, true, true) => write!(f, "{}-√{}", self.coeffs.0, self.discr),
                 (false, false, false, false, true) => {
-                    if self.b.is_negative() {
-                        write!(f, "{}{}√{}", self.a, self.b, self.r)
+                    if self.coeffs.1.is_negative() {
+                        write!(f, "{}{}√{}", self.coeffs.0, self.coeffs.1, self.discr)
                     } else {
-                        write!(f, "{}+{}√{}", self.a, self.b, self.r)
+                        write!(f, "{}+{}√{}", self.coeffs.0, self.coeffs.1, self.discr)
                     }
                 }
-                (false, false, true, _, false) => write!(f, "({}+√{})/{}", self.a, self.r, self.c),
+                (false, false, true, _, false) => write!(f, "({}+√{})/{}", self.coeffs.0, self.discr, self.coeffs.2),
                 (false, false, false, true, false) => {
-                    write!(f, "({}-√{})/{}", self.a, self.r, self.c)
+                    write!(f, "({}-√{})/{}", self.coeffs.0, self.discr, self.coeffs.2)
                 }
                 (false, false, false, false, false) => {
-                    if self.b.is_negative() {
-                        write!(f, "({}{}√{})/{}", self.a, self.b, self.r, self.c)
+                    if self.coeffs.1.is_negative() {
+                        write!(f, "({}{}√{})/{}", self.coeffs.0, self.coeffs.1, self.discr, self.coeffs.2)
                     } else {
-                        write!(f, "({}+{}√{})/{}", self.a, self.b, self.r, self.c)
+                        write!(f, "({}+{}√{})/{}", self.coeffs.0, self.coeffs.1, self.discr, self.coeffs.2)
                     }
                 }
             }
@@ -954,20 +952,20 @@ fn reduce_bin_op<T: QuadraticSurdBase>(
 where
     for<'r> &'r T: RefNum<T>,
 {
-    debug_assert!(!lhs.r.is_zero());
-    debug_assert!(!rhs.r.is_zero());
+    debug_assert!(!lhs.discr.is_zero());
+    debug_assert!(!rhs.discr.is_zero());
 
-    let result = if lhs.r > rhs.r {
-        let hint = &lhs.r / &rhs.r;
+    let result = if lhs.discr > rhs.discr {
+        let hint = &lhs.discr / &rhs.discr;
         (lhs.reduce_root_hinted(hint), rhs)
-    } else if rhs.r > lhs.r {
-        let hint = &rhs.r / &lhs.r;
+    } else if rhs.discr > lhs.discr {
+        let hint = &rhs.discr / &lhs.discr;
         (lhs, rhs.reduce_root_hinted(hint))
     } else {
         (lhs, rhs)
     };
 
-    if result.0.r == result.1.r {
+    if result.0.discr == result.1.discr {
         Some(result)
     } else {
         None
@@ -983,22 +981,22 @@ fn reduce_bin_op<T: QuadraticSurdBase>(
 where
     for<'r> &'r T: RefNum<T>,
 {
-    if (lhs.r.is_negative() && rhs.r.is_positive()) || (lhs.r.is_positive() && rhs.r.is_negative())
+    if (lhs.discr.is_negative() && rhs.discr.is_positive()) || (lhs.discr.is_positive() && rhs.discr.is_negative())
     {
         return None;
     }
 
-    let result = if lhs.r.abs() > rhs.r.abs() {
-        let hint = &lhs.r / &rhs.r;
+    let result = if lhs.discr.abs() > rhs.discr.abs() {
+        let hint = &lhs.discr / &rhs.discr;
         (lhs.reduce_root_hinted(hint), rhs)
-    } else if rhs.r > lhs.r {
-        let hint = &rhs.r / &lhs.r;
+    } else if rhs.discr > lhs.discr {
+        let hint = &rhs.discr / &lhs.discr;
         (lhs, rhs.reduce_root_hinted(hint))
     } else {
         (lhs, rhs)
     };
 
-    if result.0.r == result.1.r {
+    if result.0.discr == result.1.discr {
         Some(result)
     } else {
         None
@@ -1016,211 +1014,119 @@ where
     reduce_bin_op(lhs, rhs).expect("two root bases are not compatible!")
 }
 
-macro_rules! arith_impl {
-    (impl $imp:ident, $method:ident) => {
-        // Abstracts a/b `op` c/d = (a*lcm/b `op` c*lcm/d)/lcm where lcm = lcm(b,d)
-        impl<T: QuadraticSurdBase> $imp<QuadraticSurd<T>> for QuadraticSurd<T>
+macro_rules! forward_binop {
+    (impl $imp:ident, $rhs:ty, $method:ident) => {
+        impl<T: QuadraticSurdBase> $imp<$rhs> for QuadraticSurd<T>
         where
             for<'r> &'r T: RefNum<T>,
         {
-            type Output = QuadraticSurd<T>;
-            fn $method(self, rhs: QuadraticSurd<T>) -> QuadraticSurd<T> {
-                // shortcuts for trivial cases
-                if self.is_integer() {
-                    return rhs.$method(self.a);
-                }
-                if rhs.is_integer() {
-                    return self.$method(rhs.a);
-                }
-                if self.is_rational() {
-                    return rhs.$method(Ratio::<T>::new(self.a, self.c));
-                }
-                if rhs.is_rational() {
-                    return self.$method(Ratio::<T>::new(rhs.a, rhs.c));
-                }
-
-                // ensure that two operands have compatible bases
-                let (lhs, rhs) = reduce_bin_op_unwrap(self, rhs);
-
-                if lhs.c == rhs.c {
-                    return QuadraticSurd::new(
-                        lhs.a.$method(rhs.a),
-                        lhs.b.$method(rhs.b),
-                        rhs.c,
-                        rhs.r,
-                    );
-                }
-
-                let lcm = lhs.c.lcm(&rhs.c);
-                let lhs_r = &lcm / lhs.c;
-                let rhs_r = &lcm / rhs.c;
-                QuadraticSurd::new(
-                    (lhs.a * &lhs_r).$method(rhs.a * &rhs_r),
-                    (lhs.b * lhs_r).$method(rhs.b * rhs_r),
-                    lcm,
-                    rhs.r,
-                )
-            }
-        }
-
-        impl<T: QuadraticSurdBase> $imp<Ratio<T>> for QuadraticSurd<T>
-        where
-            for<'r> &'r T: RefNum<T>,
-        {
-            type Output = QuadraticSurd<T>;
-
+            type Output = Self;
             #[inline]
-            fn $method(self, rhs: Ratio<T>) -> QuadraticSurd<T> {
-                if &self.c == rhs.denom() {
-                    return QuadraticSurd::new(self.a.$method(rhs.numer()), self.b, self.c, self.r);
-                }
-
-                let lcm = self.c.lcm(&rhs.denom());
-                let lhs_r = &lcm / self.c;
-                let rhs_r = &lcm / rhs.denom();
-                QuadraticSurd::new(
-                    (self.a * lhs_r).$method(rhs.numer() * rhs_r),
-                    self.b,
-                    lcm,
-                    self.r,
-                )
-            }
-        }
-
-        // Abstracts the a/b `op` c/1 = (a*1 `op` b*c) / (b*1) = (a `op` b*c) / b pattern
-        impl<T: QuadraticSurdBase> $imp<T> for QuadraticSurd<T>
-        where
-            for<'r> &'r T: RefNum<T>,
-        {
-            type Output = QuadraticSurd<T>;
-            #[inline]
-            fn $method(self, rhs: T) -> QuadraticSurd<T> {
-                QuadraticSurd::new(self.a.$method(&self.c * rhs), self.b, self.c, self.r)
+            fn $method(self, rhs: $rhs) -> Self {
+                Self::from_coeffs($imp::$method(self.coeffs, rhs), self.discr)
             }
         }
     };
 }
 
-arith_impl!(impl Add, add);
-arith_impl!(impl Sub, sub);
+forward_binop!(impl Add, T, add);
+forward_binop!(impl Add, Ratio<T>, add);
+forward_binop!(impl Sub, T, sub);
+forward_binop!(impl Sub, Ratio<T>, sub);
+forward_binop!(impl Mul, T, mul);
+forward_binop!(impl Mul, Ratio<T>, mul);
+forward_binop!(impl Div, T, div);
+forward_binop!(impl Div, Ratio<T>, div);
 
-impl<T: QuadraticSurdBase> Mul<T> for QuadraticSurd<T>
+impl<T: QuadraticSurdBase> Add for QuadraticSurd<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
-    type Output = QuadraticSurd<T>;
-    #[inline]
-    fn mul(self, rhs: T) -> QuadraticSurd<T> {
-        let gcd = self.c.gcd(&rhs);
-        let rem = rhs / &gcd;
-        QuadraticSurd::new(self.a * &rem, self.b * rem, self.c / gcd, self.r)
-    }
-}
-
-impl<T: QuadraticSurdBase> Mul<Ratio<T>> for QuadraticSurd<T>
-where
-    for<'r> &'r T: RefNum<T>,
-{
-    type Output = QuadraticSurd<T>;
-    #[inline]
-    fn mul(self, rhs: Ratio<T>) -> QuadraticSurd<T> {
-        let (rhs_n, rhs_d) = rhs.into();
-        let ab_gcd = self.a.gcd(&self.b).gcd(&rhs_d);
-        let c_gcd = self.c.gcd(&rhs_n);
-        let numer_rem = rhs_n / &c_gcd;
-        let denum_rem = rhs_d / &ab_gcd;
-        QuadraticSurd::new(
-            self.a / &ab_gcd * &numer_rem,
-            self.b / ab_gcd * numer_rem,
-            self.c / c_gcd * denum_rem,
-            self.r,
-        )
-    }
-}
-
-impl<T: QuadraticSurdBase> Mul<QuadraticSurd<T>> for QuadraticSurd<T>
-where
-    for<'r> &'r T: RefNum<T>,
-{
-    type Output = QuadraticSurd<T>;
-    #[inline]
-    fn mul(self, rhs: QuadraticSurd<T>) -> QuadraticSurd<T> {
+    type Output = Self;
+    fn add(self, rhs: Self) -> Self {
         // shortcuts for trivial cases
-        if self.is_integer() {
-            return rhs * self.a;
-        }
-        if rhs.is_integer() {
-            return self * rhs.a;
-        }
         if self.is_rational() {
-            return rhs * Ratio::<T>::new(self.a, self.c);
+            return rhs - Ratio::<T>::new(self.coeffs.0, self.coeffs.2);
         }
         if rhs.is_rational() {
-            return self * Ratio::<T>::new(rhs.a, rhs.c);
-        }
-        if self.is_pure() && rhs.is_pure() {
-            return Self::new(T::zero(), self.b * rhs.b, self.c * rhs.c, self.r * rhs.r);
+            return self + Ratio::<T>::new(rhs.coeffs.0, rhs.coeffs.2);
         }
 
         // ensure that two operands have compatible bases
         let (lhs, rhs) = reduce_bin_op_unwrap(self, rhs);
-
-        let gcd_lr = (&lhs.a).gcd(&lhs.b).gcd(&rhs.c); // gcd between lhs numerator and rhs denominator
-        let gcd_rl = (&rhs.a).gcd(&rhs.b).gcd(&rhs.c); // gcd between rhs numerator and lhs denominator
-
-        let (la, lb, lc) = (&lhs.a / &gcd_lr, &lhs.b / &gcd_lr, &rhs.c / &gcd_rl);
-        let (ra, rb, rc) = (&rhs.a / &gcd_rl, &rhs.b / &gcd_rl, &lhs.c / &gcd_lr);
-        QuadraticSurd::new(
-            &la * &ra + &lb * &rb * lhs.r,
-            &la * &rb + &lb * &ra,
-            lc * rc,
-            rhs.r,
-        )
+        Self::from_coeffs(lhs.coeffs + rhs.coeffs, lhs.discr)
     }
 }
 
-impl<T: QuadraticSurdBase> Div<T> for QuadraticSurd<T>
+impl<T: QuadraticSurdBase> Sub for QuadraticSurd<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
-    type Output = QuadraticSurd<T>;
-    #[inline]
-    fn div(self, rhs: T) -> QuadraticSurd<T> {
-        let gcd = self.a.gcd(&self.b).gcd(&rhs);
-        let rem = rhs / &gcd;
-        QuadraticSurd::new(self.a / &gcd, self.b / &gcd, self.c * rem, self.r)
+    type Output = Self;
+    fn sub(self, rhs: Self) -> Self {
+        // shortcuts for trivial cases
+        if self.is_rational() {
+            return -(rhs - Ratio::<T>::new(self.coeffs.0, self.coeffs.2));
+        }
+        if rhs.is_rational() {
+            return self - Ratio::<T>::new(rhs.coeffs.0, rhs.coeffs.2);
+        }
+
+        // ensure that two operands have compatible bases
+        let (lhs, rhs) = reduce_bin_op_unwrap(self, rhs);
+        Self::from_coeffs(lhs.coeffs - rhs.coeffs, lhs.discr)
     }
 }
 
-impl<T: QuadraticSurdBase> Div<Ratio<T>> for QuadraticSurd<T>
+impl<T: QuadraticSurdBase> Mul for QuadraticSurd<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
-    type Output = QuadraticSurd<T>;
+    type Output = Self;
     #[inline]
-    fn div(self, rhs: Ratio<T>) -> QuadraticSurd<T> {
-        let (rhs_n, rhs_d) = rhs.into();
-        let ab_gcd = self.a.gcd(&self.b).gcd(&rhs_n);
-        let c_gcd = self.c.gcd(&rhs_d);
-        let denom_rem = rhs_n / &ab_gcd;
-        let numer_rem = rhs_d / &c_gcd;
-        QuadraticSurd::new(
-            self.a / &ab_gcd * &numer_rem,
-            self.b / ab_gcd * numer_rem,
-            self.c / &c_gcd * denom_rem,
-            self.r,
-        )
+    fn mul(self, rhs: Self) -> Self {
+        // shortcuts for trivial cases
+        if self.is_rational() {
+            return rhs * Ratio::<T>::new(self.coeffs.0, self.coeffs.2);
+        }
+        if rhs.is_rational() {
+            return self * Ratio::<T>::new(rhs.coeffs.0, rhs.coeffs.2);
+        }
+        if self.is_pure() && rhs.is_pure() {
+            let gcd = self.discr.gcd(&rhs.discr);
+            let discr = self.discr * rhs.discr / (&gcd * &gcd);
+            return Self::new(T::zero(), self.coeffs.1 * rhs.coeffs.1 * gcd, self.coeffs.2 * rhs.coeffs.2, discr);
+        }
+
+        // ensure that two operands have compatible bases
+        let (lhs, rhs) = reduce_bin_op_unwrap(self, rhs);
+        Self::from_coeffs(QuadraticOps::mul(lhs.coeffs, rhs.coeffs, &lhs.discr), lhs.discr)
     }
 }
 
-impl<T: QuadraticSurdBase> Div<QuadraticSurd<T>> for QuadraticSurd<T>
+impl<T: QuadraticSurdBase> Div for QuadraticSurd<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
-    type Output = QuadraticSurd<T>;
+    type Output = Self;
     #[inline]
-    fn div(self, rhs: QuadraticSurd<T>) -> QuadraticSurd<T> {
-        self.mul(rhs.recip())
+    fn div(self, rhs: Self) -> Self {
+        // shortcuts for trivial cases
+        if self.is_rational() {
+            return (rhs / Ratio::<T>::new(self.coeffs.0, self.coeffs.2)).recip();
+        }
+        if rhs.is_rational() {
+            return self / Ratio::<T>::new(rhs.coeffs.0, rhs.coeffs.2);
+        }
+        if self.is_pure() && rhs.is_pure() {
+            let gcd = self.discr.gcd(&rhs.discr);
+            let discr = self.discr * &rhs.discr / (&gcd * &gcd);
+            return Self::new(T::zero(), self.coeffs.1 * rhs.coeffs.2 * gcd, self.coeffs.2 * rhs.coeffs.1 * rhs.discr, discr);
+        }
+
+        // ensure that two operands have compatible bases
+        let (lhs, rhs) = reduce_bin_op_unwrap(self, rhs);
+        Self::from_coeffs(QuadraticOps::div(lhs.coeffs, rhs.coeffs, &lhs.discr), lhs.discr)
     }
 }
 
@@ -1231,7 +1137,7 @@ where
     type Output = QuadraticSurd<T>;
     #[inline]
     fn neg(self) -> QuadraticSurd<T> {
-        QuadraticSurd::new_raw(-self.a, -self.b, self.c, self.r)
+        QuadraticSurd::new_raw(-self.coeffs.0, -self.coeffs.1, self.coeffs.2, self.discr)
     }
 }
 
@@ -1241,16 +1147,11 @@ where
 {
     #[inline]
     fn zero() -> Self {
-        QuadraticSurd {
-            a: T::zero(),
-            b: T::zero(),
-            c: T::one(),
-            r: T::zero(),
-        }
+        Self { coeffs: QuadraticSurdCoeffs(T::zero(), T::zero(), T::one()), discr: T::zero() }
     }
     #[inline]
     fn is_zero(&self) -> bool {
-        self.a.is_zero() && self.b.is_zero()
+        self.coeffs.0.is_zero() && self.coeffs.1.is_zero()
     }
 }
 
@@ -1260,16 +1161,11 @@ where
 {
     #[inline]
     fn one() -> Self {
-        QuadraticSurd {
-            a: T::one(),
-            b: T::zero(),
-            c: T::one(),
-            r: T::zero(),
-        }
+        Self { coeffs: QuadraticSurdCoeffs(T::one(), T::zero(), T::one()), discr: T::zero() }
     }
     #[inline]
     fn is_one(&self) -> bool {
-        self.a.is_one() && self.b.is_zero() && !self.c.is_zero()
+        self.coeffs.0.is_one() && self.coeffs.1.is_zero() && self.coeffs.2.is_one()
     }
 }
 
@@ -1301,7 +1197,7 @@ where
 {
     #[inline]
     fn to_i64(&self) -> Option<i64> {
-        if self.r < T::zero() {
+        if self.discr.is_negative() {
             return None;
         }
         match self.to_integer() {
@@ -1312,7 +1208,7 @@ where
 
     #[inline]
     fn to_u64(&self) -> Option<u64> {
-        if self.r < T::zero() {
+        if self.discr.is_negative() {
             return None;
         }
         match self.to_integer() {
@@ -1323,11 +1219,11 @@ where
 
     #[inline]
     fn to_f64(&self) -> Option<f64> {
-        if self.r < T::zero() {
+        if self.discr < T::zero() {
             return None;
         }
 
-        Some((self.a.to_f64()? + self.b.to_f64()? * self.r.to_f64()?.sqrt()) / self.c.to_f64()?)
+        Some((self.coeffs.0.to_f64()? + self.coeffs.1.to_f64()? * self.discr.to_f64()?.sqrt()) / self.coeffs.2.to_f64()?)
     }
 }
 
@@ -1341,10 +1237,10 @@ mod complex {
         for<'r> &'r T: RefNum<T>,
     {
         pub fn to_complex64(&self) -> Option<Complex64> {
-            if self.r < T::zero() {
-                let c = self.c.to_f64()?;
-                let re = self.a.to_f64()? / c;
-                let im = self.b.to_f64()? * self.r.to_f64()?.abs().sqrt() / c;
+            if self.discr < T::zero() {
+                let c = self.coeffs.2.to_f64()?;
+                let re = self.coeffs.0.to_f64()? / c;
+                let im = self.coeffs.1.to_f64()? * self.discr.to_f64()?.abs().sqrt() / c;
                 Some(Complex64::new(re as f64, im as f64))
             } else {
                 let re = self.to_f64()?;
@@ -1442,14 +1338,15 @@ where
         // let g = a_c/b_c, then g^2 - 2g(x/y) + r = 0
         // result is available only if g is rational
 
-        let x = Ratio::new(target.a, target.c.clone());
-        let y = Ratio::new(target.b, target.c);
+        let QuadraticSurdCoeffs(a, b, c) = target.coeffs;
+        let x = Ratio::new(a, c.clone());
+        let y = Ratio::new(b, c);
         let x_y = x / &y;
-        let delta2 = &x_y * &x_y - &target.r;
+        let delta2 = &x_y * &x_y - &target.discr;
         if delta2.is_negative() {
             // TODO (v0.2): How to support complex quadratic surd here?
             return Err(FromSqrtError {
-                data: QuadraticSurd::from_rationals(x_y * &y, y, Ratio::from(target.r)),
+                data: QuadraticSurd::from_rationals(x_y * &y, y, Ratio::from(target.discr)),
                 kind: SqrtErrorKind::Unrepresentable,
             });
         }
@@ -1459,14 +1356,14 @@ where
             Ok(sq) => sq,
             Err(e) => {
                 return Err(FromSqrtError {
-                    data: QuadraticSurd::from_rationals(x_y * &y, y, Ratio::from(target.r)),
+                    data: QuadraticSurd::from_rationals(x_y * &y, y, Ratio::from(target.discr)),
                     kind: e.kind,
                 });
             }
         };
         if !sqrt_delta.is_integer() {
             return Err(FromSqrtError {
-                data: QuadraticSurd::from_rationals(x_y * &y, y, Ratio::from(target.r)),
+                data: QuadraticSurd::from_rationals(x_y * &y, y, Ratio::from(target.discr)),
                 kind: SqrtErrorKind::Unrepresentable,
             });
         }
@@ -1483,7 +1380,7 @@ where
         debug_assert!(&c * &c == c2.to_integer());
 
         let (a, b) = g.into();
-        Ok(QuadraticSurd::new(a, b, c, target.r))
+        Ok(QuadraticSurd::new(a, b, c, target.discr))
     }
 }
 

@@ -45,7 +45,7 @@ where for<'r> &'r T: RefNum<T>, {
 /// 
 /// Specifically, `ω=√D` when `D ≡ 2,3 mod 4`, and `ω=(1+√D)/2` when `D ≡ 1 mod 4`. Note that when `ω=(1+√D)/2`,
 /// `ω² = (D-1)/4 + w`
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct QuadraticIntCoeffs<T> (pub T, pub T);
 
 impl<T: Add<Output=T>> Add for QuadraticIntCoeffs<T> {
