@@ -12,12 +12,165 @@ use num_traits::{
     CheckedAdd, CheckedMul, FromPrimitive, NumRef, One, RefNum, Signed, ToPrimitive, Zero,
 };
 use std::fmt;
+use super::QuadraticOps;
 
 use num_rational::Ratio;
 
+// TODO: is Integer required?
 /// A helper trait to define valid type that can be used for QuadraticSurd
 pub trait QuadraticSurdBase: Integer + NumRef + Clone + Roots + Signed {}
 impl<T: Integer + NumRef + Clone + Roots + Signed> QuadraticSurdBase for T {}
+
+/// Underlying representation of a quadratic surd `(a + b*√r) / c` as (a,b,c).
+/// 
+/// Note that the representation won't be reduced (normalized) after operations.
+pub struct QuadraticSurdCoeffs<T> (pub T, pub T, pub T);
+
+impl<T: QuadraticSurdBase> Add for QuadraticSurdCoeffs<T> 
+where for<'r> &'r T: RefNum<T>, {
+    type Output = Self;
+    #[inline]
+    fn add(self, rhs: Self) -> Self::Output {
+        if self.2 == rhs.2 {
+            Self (
+                self.0 + rhs.0,
+                self.1 + rhs.1,
+                rhs.2,
+            )
+        } else {
+            Self(
+                self.0 * &rhs.2 + rhs.0 * &self.2,
+                self.1 * &rhs.2 + rhs.1 * &self.2,
+                rhs.2 * self.2,
+            )
+        }
+    }
+}
+
+impl<T: QuadraticSurdBase> Sub for QuadraticSurdCoeffs<T>
+where for<'r> &'r T: RefNum<T>, {
+    type Output = Self;
+    #[inline]
+    fn sub(self, rhs: Self) -> Self::Output {
+        if self.2 == rhs.2 {
+            Self (
+                self.0 - rhs.0,
+                self.1 - rhs.1,
+                rhs.2,
+            )
+        } else {
+            Self(
+                self.0 * &rhs.2 - rhs.0 * &self.2,
+                self.1 * &rhs.2 - rhs.1 * &self.2,
+                rhs.2 * self.2,
+            )
+        }
+    }
+}
+
+impl<T: QuadraticSurdBase> QuadraticOps<Self, &T, Self> for QuadraticSurdCoeffs<T>
+where for<'r> &'r T: RefNum<T>, {
+    type Scalar = Ratio<T>;
+    fn mul(self, rhs: Self, discr: &T) -> Self {
+        let Self (la, lb, lc) = self;
+        let Self (ra, rb, rc) = rhs;
+        Self (
+            &la * &ra + &lb * &rb * discr,
+            la * rb + lb * ra,
+            lc * rc,
+        )
+    }
+    fn div(self, rhs: Self, discr: &T) -> Self {
+        let Self (la, lb, lc) = self;
+        let Self (ra, rb, rc) = rhs;
+        let c = lc * (&ra * &ra - &rb * &rb * discr);
+        Self (
+            &rc * (&la * &ra - &lb * &rb * discr),
+            rc * (lb * ra - la * rb),
+            c,
+        )
+    }
+    #[inline]
+    fn conj(self, _: &T) -> Self {
+        Self(self.0, -self.1, self.2)
+    }
+    #[inline]
+    fn norm(self, discr: &T) -> Self::Scalar {
+        Ratio::new(&self.0 * &self.0 - &self.1 * &self.1 * discr, &self.2 * &self.2)
+    }
+}
+
+impl<T: QuadraticSurdBase> Add<Ratio<T>> for QuadraticSurdCoeffs<T> {
+    type Output = Self;
+    #[inline]
+    fn add(self, rhs: Ratio<T>) -> Self {
+        let Self (la, lb, lc) = self;
+        let (ra, rc) = rhs.into();
+        if lc == rc {
+            Self(la + ra, lb, lc)
+        } else {
+            Self(la * &rc + ra * &lc, lb * &rc, lc * rc)
+        }
+    }
+}
+
+impl<T: QuadraticSurdBase> Sub<Ratio<T>> for QuadraticSurdCoeffs<T> {
+    type Output = Self;
+    #[inline]
+    fn sub(self, rhs: Ratio<T>) -> Self {
+        let Self (la, lb, lc) = self;
+        let (ra, rc) = rhs.into();
+        if lc == rc {
+            Self(la - ra, lb, lc)
+        } else {
+            Self(la * &rc - ra * &lc, lb * &rc, lc * rc)
+        }
+    }
+}
+
+impl<T: QuadraticSurdBase> Mul<Ratio<T>> for QuadraticSurdCoeffs<T> {
+    type Output = Self;
+    fn mul(self, rhs: Ratio<T>) -> Self {
+        let (ra, rc) = rhs.into();
+        Self(self.0 * &ra, self.1 * ra, self.2 * rc)
+    }
+}
+
+impl<T: QuadraticSurdBase> Div<Ratio<T>> for QuadraticSurdCoeffs<T> {
+    type Output = Self;
+    fn div(self, rhs: Ratio<T>) -> Self {
+        let (ra, rc) = rhs.into();
+        Self(self.0 * &rc, self.1 * rc, self.2 * ra)
+    }
+}
+
+impl<T: QuadraticSurdBase> Add<T> for QuadraticSurdCoeffs<T> {
+    type Output = Self;
+    fn add(self, rhs: T) -> Self::Output {
+        Self(self.0 + rhs * &self.2, self.1, self.2)
+    }
+}
+
+impl<T: QuadraticSurdBase> Sub<T> for QuadraticSurdCoeffs<T> {
+    type Output = Self;
+    fn sub(self, rhs: T) -> Self::Output {
+        Self(self.0 - rhs * &self.2, self.1, self.2)
+    }
+}
+
+impl<T: QuadraticSurdBase> Mul<T> for QuadraticSurdCoeffs<T> {
+    type Output = Self;
+    fn mul(self, rhs: T) -> Self::Output {
+        Self(self.0 * &rhs, self.1 * rhs, self.2)
+    }
+}
+
+impl<T: QuadraticSurdBase> Div<T> for QuadraticSurdCoeffs<T> {
+    type Output = Self;
+    fn div(self, rhs: T) -> Self::Output {
+        Self(self.0, self.1, self.2 * rhs)
+    }
+}
 
 /// A quadratic number represented as `(a + b*√r) / c`.
 /// If the support for complex number is enabled, then this struct can represent

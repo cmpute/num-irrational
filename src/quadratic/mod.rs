@@ -3,26 +3,25 @@
 
 pub mod integer;
 pub mod surd;
+use core::ops::{Add, Sub};
 
 /// This trait describes operations on quadratic field with self as the discriminant
-pub trait QuadraticNum<Rhs = Self, Discr = Self> {
-    type Output;
-    type Element;
+pub trait QuadraticOps<Rhs = Self, Discr = Self, Output = Self> : Add<Rhs, Output = Output> + Sub<Rhs, Output = Output> {
+    type Scalar;
 
-    fn add(self, rhs: Rhs, discr: Discr) -> Self::Output; // TODO: use Add trait
-    fn sub(self, rhs: Rhs, discr: Discr) -> Self::Output; //       use Sub trait
-    fn mul(self, rhs: Rhs, discr: Discr) -> Self::Output;
-    fn div(self, rhs: Rhs, discr: Discr) -> Self::Output;
+    fn mul(self, rhs: Rhs, discr: Discr) -> Output;
+    fn div(self, rhs: Rhs, discr: Discr) -> Output;
 
     /// Get the conjugate of the quadratic integer.
     /// 
     /// The conjugate of a quadratic number `x + y√D` is `x - y√D`
-    fn conj(self, discr: Discr) -> Self::Output;
+    fn conj(self, discr: Discr) -> Output;
 
     /// Get the norm of the quadratic integer.
     /// 
     /// The norm of a quadratic number `x + y√D` is `x² - Dy²`
-    fn norm(self, discr: Discr) -> Self::Element;
+    fn norm(self, discr: Discr) -> Self::Scalar;
 }
 
 // TODO: implement QuadraticNum for QuadraticSurdCoeffs and construct quadraticsurd based on that
+// TODO: create QuadraticAssignOps

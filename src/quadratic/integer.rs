@@ -1,6 +1,6 @@
 //! Implementation of quadratic integers
 
-use super::QuadraticNum;
+use super::QuadraticOps;
 use core::ops::*;
 use num_traits::{NumRef, RefNum, Signed, One};
 
@@ -48,20 +48,25 @@ where for<'r> &'r T: RefNum<T>, {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct QuadraticIntCoeffs<T> (pub T, pub T);
 
-// TODO: constraint T to be Signed
-
-impl<T: Signed + NumRef + One + Clone> QuadraticNum<Self, &T> for QuadraticIntCoeffs<T> where for<'r> &'r T: RefNum<T> {
+impl<T: Add<Output=T>> Add for QuadraticIntCoeffs<T> {
     type Output = Self;
-    type Element = T;
-
     #[inline]
-    fn add(self, rhs: Self, discr: &T) -> Self {
+    fn add(self, rhs: Self) -> Self::Output {
         Self(self.0 + rhs.0, self.1 + rhs.1)
     }
+}
+
+impl<T: Sub<Output=T>> Sub for QuadraticIntCoeffs<T> {
+    type Output = Self;
     #[inline]
-    fn sub(self, rhs: Self, discr: &T) -> Self {
+    fn sub(self, rhs: Self) -> Self::Output {
         Self(self.0 - rhs.0, self.1 - rhs.1)
     }
+}
+
+impl<T: Signed + NumRef + One> QuadraticOps<Self, &T, Self> for QuadraticIntCoeffs<T> where for<'r> &'r T: RefNum<T> {
+    type Scalar = T;
+
     #[inline]
     fn mul(self, rhs: Self, discr: &T) -> Self {
         match mod4d2(discr) {
@@ -99,7 +104,7 @@ impl<T: Signed + NumRef + One + Clone> QuadraticNum<Self, &T> for QuadraticIntCo
         Self(div_round(a, &n), div_round(b, &n))
     }
     #[inline]
-    fn conj(self, discr: &T) -> Self::Output {
+    fn conj(self, discr: &T) -> Self {
         match mod4d2(discr) {
             0 => Self(
                 // conj(a+bw) = conj(a+b/2 + b/2*sq) = a+b/2 - b/2*sq = a+b - bw
@@ -110,7 +115,7 @@ impl<T: Signed + NumRef + One + Clone> QuadraticNum<Self, &T> for QuadraticIntCo
         }
     }
     #[inline]
-    fn norm(self, discr: &T) -> Self::Element {
+    fn norm(self, discr: &T) -> T {
         match mod4d2(discr) {
             0 => {
                 // |a+bw| = (a+b/2)^2 - (b/2*sq)^2 = a^2+ab+b^2/4 - D*b^2/4 = a^2 + ab + b^2(1-D)/4
@@ -128,15 +133,13 @@ impl<T: Signed + NumRef + One + Clone> QuadraticNum<Self, &T> for QuadraticIntCo
 /// latter will be in normal fields of real numbers or complex numbers, while the operations
 /// for the former will be in the Quadratic Field (specifically in the quadratic integer ring ℤ\[ω\])
 /// The arithmetic operations can only be performed between the integers with the same base.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct QuadraticInt<T> {
     coeffs: QuadraticIntCoeffs<T>,
     discr: T,
 }
 
-// TODO: define GaussianInt only when complex feature is enabled.
-
-impl<T: Signed + NumRef + One + Clone> QuadraticInt<T> where for<'r> &'r T: RefNum<T> {
+impl<T: Signed + NumRef + One> QuadraticInt<T> where for<'r> &'r T: RefNum<T> {
     /// Create a quadratic integer `a + bω`, where `ω` is `√r` or `(1+√r)/2`.
     /// Note that r must be not divisible by 4 (to be square free), otherwise the factor 4
     /// will be extracted from r to b.
@@ -160,21 +163,48 @@ impl<T: Signed + NumRef + One + Clone> QuadraticInt<T> where for<'r> &'r T: RefN
     }
 }
 
-macro_rules! forward_binop {
-    (impl $trait:ident, $func:ident) => {
-        impl<T: Signed + NumRef + One + Clone> $trait for QuadraticInt<T> where for<'r> &'r T: RefNum<T> {
-            type Output = Self;
-            #[inline]
-            fn $func(self, rhs: Self) -> Self::Output {
-                Self { coeffs: self.coeffs.$func(rhs.coeffs, &self.discr), discr: rhs.discr }
-            }
-        }
-    };
+// TODO: reduce root base for binary operations
+
+impl<T: Add<Output=T>> Add for QuadraticInt<T> where for<'r> &'r T: RefNum<T> {
+    type Output = Self;
+    #[inline]
+    fn add(self, rhs: Self) -> Self::Output {
+        Self { coeffs: self.coeffs + rhs.coeffs, discr: rhs.discr }
+    }
 }
-forward_binop!(impl Add, add);
-forward_binop!(impl Sub, sub);
-forward_binop!(impl Mul, mul);
-forward_binop!(impl Div, div);
+
+impl<T: Sub<Output=T>> Sub for QuadraticInt<T> where for<'r> &'r T: RefNum<T> {
+    type Output = Self;
+    #[inline]
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self { coeffs: self.coeffs - rhs.coeffs, discr: rhs.discr }
+    }
+}
+
+impl<T: Signed + NumRef + One + Clone> Mul for QuadraticInt<T> where for<'r> &'r T: RefNum<T> {
+    type Output = Self;
+    #[inline]
+    fn mul(self, rhs: Self) -> Self::Output {
+        Self { coeffs: self.coeffs.mul(rhs.coeffs, &self.discr), discr: rhs.discr }
+    }
+}
+
+impl<T: Signed + NumRef + One + Clone> Div for QuadraticInt<T> where for<'r> &'r T: RefNum<T> {
+    type Output = Self;
+    #[inline]
+    fn div(self, rhs: Self) -> Self::Output {
+        Self { coeffs: self.coeffs.div(rhs.coeffs, &self.discr), discr: rhs.discr }
+    }
+}
+
+#[cfg(complex)]
+mod complex {
+    use super::QuadraticIntCoeffs;
+    pub struct GaussianInt<T> (QuadraticIntCoeffs<T>);
+}
+
+#[cfg(complex)]
+use complex::GaussianInt;
 
 #[cfg(test)]
 mod tests {

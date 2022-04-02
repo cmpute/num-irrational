@@ -46,6 +46,9 @@ pub use cont_frac::simple::{ContinuedFraction, InfiniteContinuedFraction};
 pub use quadratic::surd::QuadraticSurd;
 pub use traits::*;
 
+#[cfg(feature = "complex")]
+pub use quadratic::integer::GaussianInt;
+
 /// [QuadraticSurd] with 32-bit integers
 pub type Quadratic32 = QuadraticSurd<i32>;
 /// [QuadraticSurd] with 64-bit integers
