@@ -1,7 +1,7 @@
 //! Implementation of simple continued fractions
 
 use super::block::{Block, DualBlock};
-use crate::quadratic::surd::{QuadraticSurd, QuadraticSurdBase};
+use crate::quadratic::{QuadraticBase, surd::QuadraticSurd};
 use crate::traits::{Approximation, Computable, WithSigned, WithUnsigned};
 use core::convert::TryFrom;
 use core::str::FromStr;
@@ -513,7 +513,7 @@ impl<T: Zero> ContinuedFraction<T> {
 }
 
 impl<
-        T: QuadraticSurdBase + AddAssign + WithUnsigned<Unsigned = U>,
+        T: QuadraticBase + AddAssign + WithUnsigned<Unsigned = U>,
         U: Integer + Clone + NumRef + CheckedAdd + CheckedMul + WithSigned<Signed = T>,
     > Zero for ContinuedFraction<U>
 where
@@ -532,7 +532,7 @@ where
 }
 
 impl<
-        T: QuadraticSurdBase + AddAssign + WithUnsigned<Unsigned = U>,
+        T: QuadraticBase + AddAssign + WithUnsigned<Unsigned = U>,
         U: Integer + Clone + NumRef + CheckedAdd + CheckedMul + WithSigned<Signed = T>,
     > One for ContinuedFraction<U>
 where
@@ -721,7 +721,7 @@ impl<T: Zero> Neg for ContinuedFraction<T> {
 }
 
 impl<
-        T: QuadraticSurdBase + AddAssign + WithUnsigned<Unsigned = U>,
+        T: QuadraticBase + AddAssign + WithUnsigned<Unsigned = U>,
         U: Integer + Clone + NumRef + CheckedAdd + CheckedMul + WithSigned<Signed = T>,
     > Mul<T> for ContinuedFraction<U>
 where
@@ -740,7 +740,7 @@ where
 }
 
 impl<
-        T: QuadraticSurdBase + AddAssign + WithUnsigned<Unsigned = U>,
+        T: QuadraticBase + AddAssign + WithUnsigned<Unsigned = U>,
         U: Integer + Clone + NumRef + CheckedAdd + CheckedMul + WithSigned<Signed = T>,
     > Div<T> for ContinuedFraction<U>
 where
@@ -761,7 +761,7 @@ where
 macro_rules! impl_binop_for_ratio_surd {
     (impl $imp:ident, $method:ident) => {
         impl<
-                T: QuadraticSurdBase + AddAssign + WithUnsigned<Unsigned = U>,
+                T: QuadraticBase + AddAssign + WithUnsigned<Unsigned = U>,
                 U: Integer + Clone + NumRef + CheckedAdd + CheckedMul + WithSigned<Signed = T>,
             > $imp<Ratio<T>> for ContinuedFraction<U>
         where
@@ -780,7 +780,7 @@ macro_rules! impl_binop_for_ratio_surd {
         }
 
         impl<
-                T: QuadraticSurdBase + AddAssign + WithUnsigned<Unsigned = U>,
+                T: QuadraticBase + AddAssign + WithUnsigned<Unsigned = U>,
                 U: Integer + Clone + NumRef + CheckedAdd + CheckedMul + WithSigned<Signed = T>,
             > $imp<ContinuedFraction<U>> for ContinuedFraction<U>
         where

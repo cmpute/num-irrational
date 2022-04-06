@@ -1,7 +1,8 @@
 //! Implementation of quadratic integers
 
-use super::QuadraticOps;
+use super::{QuadraticOps, QuadraticBase};
 use core::ops::*;
+use num_integer::Roots;
 use num_traits::{NumRef, One, RefNum, Signed};
 
 #[inline]
@@ -189,8 +190,109 @@ where
         unimplemented!()
     }
 }
+impl<T: QuadraticBase> QuadraticInt<T>
+where
+    for<'r> &'r T: RefNum<T>,
+{
+    // Try to reduce the root base with a possible factor.
+    fn reduce_root_hinted(self, hint: T) -> Self {
+        let hint = hint.abs();
+        if hint.is_zero() || hint.is_one() || hint.is_negative() {
+            return self;
+        }
+
+        let (quo, rem) = self.discr.div_rem(&hint);
+        if rem.is_zero() {
+            // if hint is actually a factor
+            let root = hint.clone().sqrt();
+            if &root * &root == hint {
+                // if hint is a square number, then remove the hint factor
+                // note that r ≡ r/a^2 mod 4 (given a is odd)
+                return Self::new(
+                    self.coeffs.0 * &root,
+                    self.coeffs.1 * &root,
+                    quo
+                );
+            }
+        }
+
+        self
+    }
+}
 
 // TODO: reduce root base for binary operations
+// Reduce root base for binary operands. Return None if the two bases
+// cannot be matched. This function assumes the root bases on both sides
+// are not zero
+#[inline]
+#[cfg(not(feature = "complex"))]
+fn reduce_bin_op<T: QuadraticBase>(
+    lhs: QuadraticInt<T>,
+    rhs: QuadraticInt<T>,
+) -> Option<(QuadraticInt<T>, QuadraticInt<T>)>
+where
+    for<'r> &'r T: RefNum<T>,
+{
+    debug_assert!(!lhs.discr.is_zero());
+    debug_assert!(!rhs.discr.is_zero());
+
+    let result = if lhs.discr > rhs.discr {
+        let hint = &lhs.discr / &rhs.discr;
+        (lhs.reduce_root_hinted(hint), rhs)
+    } else if rhs.discr > lhs.discr {
+        let hint = &rhs.discr / &lhs.discr;
+        (lhs, rhs.reduce_root_hinted(hint))
+    } else {
+        (lhs, rhs)
+    };
+
+    if result.0.discr == result.1.discr {
+        Some(result)
+    } else {
+        None
+    }
+}
+
+#[inline]
+#[cfg(feature = "complex")]
+fn reduce_bin_op<T: QuadraticBase>(
+    lhs: QuadraticInt<T>,
+    rhs: QuadraticInt<T>,
+) -> Option<(QuadraticInt<T>, QuadraticInt<T>)>
+where
+    for<'r> &'r T: RefNum<T>,
+{
+    if lhs.discr.is_negative() ^ rhs.discr.is_negative() {
+        return None;
+    }
+
+    let result = if lhs.discr.abs() > rhs.discr.abs() {
+        let hint = &lhs.discr / &rhs.discr;
+        (lhs.reduce_root_hinted(hint), rhs)
+    } else if rhs.discr > lhs.discr {
+        let hint = &rhs.discr / &lhs.discr;
+        (lhs, rhs.reduce_root_hinted(hint))
+    } else {
+        (lhs, rhs)
+    };
+
+    if result.0.discr == result.1.discr {
+        Some(result)
+    } else {
+        None
+    }
+}
+
+#[inline]
+fn reduce_bin_op_unwrap<T: QuadraticBase>(
+    lhs: QuadraticInt<T>,
+    rhs: QuadraticInt<T>,
+) -> (QuadraticInt<T>, QuadraticInt<T>)
+where
+    for<'r> &'r T: RefNum<T>,
+{
+    reduce_bin_op(lhs, rhs).expect("two root bases are not compatible!")
+}
 
 impl<T: Add<Output = T>> Add for QuadraticInt<T>
 where
@@ -302,6 +404,9 @@ mod complex {
             Self(self.0.div(rhs.0, &-T::one()))
         }
     }
+
+    // TODO: implement num_integer::Integer for GaussianInt, especially is_even and is_odd can be derived from
+    // https://crates.io/crates/gaussiant
 }
 
 #[cfg(feature = "complex")]

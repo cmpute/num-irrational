@@ -1,6 +1,6 @@
 //! Implementation of qudratic irrational numbers
 
-use super::QuadraticOps;
+use super::{QuadraticBase, QuadraticOps};
 use crate::cont_frac::simple::ContinuedFraction;
 use crate::traits::{
     Approximation, Computable, FromSqrt, FromSqrtError, SqrtErrorKind, WithSigned, WithUnsigned,
@@ -16,10 +16,6 @@ use std::fmt;
 
 use num_rational::Ratio;
 
-/// A helper trait to define valid type that can be used for QuadraticSurd
-pub trait QuadraticSurdBase: Integer + NumRef + Clone + Roots + Signed + fmt::Debug {}
-impl<T: Integer + NumRef + Clone + Roots + Signed + fmt::Debug> QuadraticSurdBase for T {}
-
 /// Underlying representation of a quadratic surd `(a + b*√r) / c` as (a,b,c).
 ///
 /// Note that the representation won't be reduced (normalized) after operations.
@@ -28,7 +24,7 @@ impl<T: Integer + NumRef + Clone + Roots + Signed + fmt::Debug> QuadraticSurdBas
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct QuadraticSurdCoeffs<T>(pub T, pub T, pub T);
 
-impl<T: QuadraticSurdBase> Add for QuadraticSurdCoeffs<T>
+impl<T: QuadraticBase> Add for QuadraticSurdCoeffs<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
@@ -47,7 +43,7 @@ where
     }
 }
 
-impl<T: QuadraticSurdBase> Sub for QuadraticSurdCoeffs<T>
+impl<T: QuadraticBase> Sub for QuadraticSurdCoeffs<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
@@ -66,7 +62,7 @@ where
     }
 }
 
-impl<T: QuadraticSurdBase> QuadraticOps<Self, &T, Self> for QuadraticSurdCoeffs<T>
+impl<T: QuadraticBase> QuadraticOps<Self, &T, Self> for QuadraticSurdCoeffs<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
@@ -99,7 +95,7 @@ where
     }
 }
 
-impl<T: QuadraticSurdBase> Add<Ratio<T>> for QuadraticSurdCoeffs<T> {
+impl<T: QuadraticBase> Add<Ratio<T>> for QuadraticSurdCoeffs<T> {
     type Output = Self;
     #[inline]
     fn add(self, rhs: Ratio<T>) -> Self {
@@ -113,7 +109,7 @@ impl<T: QuadraticSurdBase> Add<Ratio<T>> for QuadraticSurdCoeffs<T> {
     }
 }
 
-impl<T: QuadraticSurdBase> Sub<Ratio<T>> for QuadraticSurdCoeffs<T> {
+impl<T: QuadraticBase> Sub<Ratio<T>> for QuadraticSurdCoeffs<T> {
     type Output = Self;
     #[inline]
     fn sub(self, rhs: Ratio<T>) -> Self {
@@ -127,7 +123,7 @@ impl<T: QuadraticSurdBase> Sub<Ratio<T>> for QuadraticSurdCoeffs<T> {
     }
 }
 
-impl<T: QuadraticSurdBase> Mul<Ratio<T>> for QuadraticSurdCoeffs<T> {
+impl<T: QuadraticBase> Mul<Ratio<T>> for QuadraticSurdCoeffs<T> {
     type Output = Self;
     fn mul(self, rhs: Ratio<T>) -> Self {
         let (ra, rc) = rhs.into();
@@ -135,7 +131,7 @@ impl<T: QuadraticSurdBase> Mul<Ratio<T>> for QuadraticSurdCoeffs<T> {
     }
 }
 
-impl<T: QuadraticSurdBase> Div<Ratio<T>> for QuadraticSurdCoeffs<T> {
+impl<T: QuadraticBase> Div<Ratio<T>> for QuadraticSurdCoeffs<T> {
     type Output = Self;
     fn div(self, rhs: Ratio<T>) -> Self {
         let (ra, rc) = rhs.into();
@@ -143,28 +139,28 @@ impl<T: QuadraticSurdBase> Div<Ratio<T>> for QuadraticSurdCoeffs<T> {
     }
 }
 
-impl<T: QuadraticSurdBase> Add<T> for QuadraticSurdCoeffs<T> {
+impl<T: QuadraticBase> Add<T> for QuadraticSurdCoeffs<T> {
     type Output = Self;
     fn add(self, rhs: T) -> Self::Output {
         Self(self.0 + rhs * &self.2, self.1, self.2)
     }
 }
 
-impl<T: QuadraticSurdBase> Sub<T> for QuadraticSurdCoeffs<T> {
+impl<T: QuadraticBase> Sub<T> for QuadraticSurdCoeffs<T> {
     type Output = Self;
     fn sub(self, rhs: T) -> Self::Output {
         Self(self.0 - rhs * &self.2, self.1, self.2)
     }
 }
 
-impl<T: QuadraticSurdBase> Mul<T> for QuadraticSurdCoeffs<T> {
+impl<T: QuadraticBase> Mul<T> for QuadraticSurdCoeffs<T> {
     type Output = Self;
     fn mul(self, rhs: T) -> Self::Output {
         Self(self.0 * &rhs, self.1 * rhs, self.2)
     }
 }
 
-impl<T: QuadraticSurdBase> Div<T> for QuadraticSurdCoeffs<T> {
+impl<T: QuadraticBase> Div<T> for QuadraticSurdCoeffs<T> {
     type Output = Self;
     fn div(self, rhs: T) -> Self::Output {
         Self(self.0, self.1, self.2 * rhs)
@@ -256,7 +252,7 @@ impl<T: Integer> From<Ratio<T>> for QuadraticSurd<T> {
     }
 }
 
-impl<T: QuadraticSurdBase> QuadraticSurd<T>
+impl<T: QuadraticBase> QuadraticSurd<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
@@ -410,7 +406,7 @@ where
         Some(Self::from_rationals(-b * aa.recip(), aa.recip(), delta))
     }
 
-    /// Returns the reciprocal of the surd
+    /// Returns the reciprocal of the surd, TODO: implement as num_traits::Inv trait
     #[inline]
     pub fn recip(self) -> Self {
         let QuadraticSurdCoeffs(a, b, c) = self.coeffs;
@@ -617,7 +613,7 @@ where
     }
 }
 
-impl<T: QuadraticSurdBase> PartialEq for QuadraticSurd<T>
+impl<T: QuadraticBase> PartialEq for QuadraticSurd<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
@@ -643,7 +639,7 @@ where
     }
 }
 
-impl<T: QuadraticSurdBase> Eq for QuadraticSurd<T> where for<'r> &'r T: RefNum<T> {}
+impl<T: QuadraticBase> Eq for QuadraticSurd<T> where for<'r> &'r T: RefNum<T> {}
 
 // TODO: implement PartialOrd
 
@@ -654,7 +650,7 @@ impl<T> Into<(T, T, T, T)> for QuadraticSurd<T> {
     }
 }
 
-impl<T: QuadraticSurdBase + FromPrimitive + CheckedMul> QuadraticSurd<T>
+impl<T: QuadraticBase + FromPrimitive + CheckedMul> QuadraticSurd<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
@@ -702,7 +698,7 @@ where
 
 impl<
         T: Integer + Clone + NumRef + CheckedAdd + CheckedMul + WithSigned<Signed = U>,
-        U: QuadraticSurdBase,
+        U: QuadraticBase,
     > From<ContinuedFraction<T>> for QuadraticSurd<U>
 where
     for<'r> &'r T: RefNum<T>,
@@ -769,7 +765,7 @@ where
 // Reference: http://www.numbertheory.org/courses/MP313/lectures/lecture17/page5.html
 //            http://www.numbertheory.org/gnubc/surd
 // assumes positive surd, parameter `neg` determines the sign of the fraction
-fn quadsurd_to_contfrac<T: QuadraticSurdBase + WithUnsigned<Unsigned = U> + AddAssign, U>(
+fn quadsurd_to_contfrac<T: QuadraticBase + WithUnsigned<Unsigned = U> + AddAssign, U>(
     a: T,
     b: T,
     c: T,
@@ -820,7 +816,7 @@ where
 }
 
 #[cfg(not(feature = "complex"))]
-impl<T: QuadraticSurdBase + WithUnsigned<Unsigned = U> + AddAssign, U> From<QuadraticSurd<T>>
+impl<T: QuadraticBase + WithUnsigned<Unsigned = U> + AddAssign, U> From<QuadraticSurd<T>>
     for ContinuedFraction<U>
 where
     for<'r> &'r T: RefNum<T>,
@@ -836,7 +832,7 @@ where
 
 // TODO: convert to continued fraction based on gaussian integers if `complex` is enabled
 #[cfg(feature = "complex")]
-impl<T: QuadraticSurdBase + WithUnsigned<Unsigned = U> + AddAssign, U> TryFrom<QuadraticSurd<T>>
+impl<T: QuadraticBase + WithUnsigned<Unsigned = U> + AddAssign, U> TryFrom<QuadraticSurd<T>>
     for ContinuedFraction<U>
 where
     for<'r> &'r T: RefNum<T>,
@@ -865,7 +861,7 @@ where
 }
 
 impl<
-        T: QuadraticSurdBase + CheckedAdd + AddAssign + WithUnsigned<Unsigned = U>,
+        T: QuadraticBase + CheckedAdd + AddAssign + WithUnsigned<Unsigned = U>,
         U: Integer + Clone + CheckedAdd + CheckedMul + WithSigned<Signed = T>,
     > Computable<T> for QuadraticSurd<T>
 where
@@ -972,7 +968,7 @@ impl<T: Integer + Signed + fmt::Display> fmt::Display for QuadraticSurd<T> {
 // are not zero
 #[inline]
 #[cfg(not(feature = "complex"))]
-fn reduce_bin_op<T: QuadraticSurdBase>(
+fn reduce_bin_op<T: QuadraticBase>(
     lhs: QuadraticSurd<T>,
     rhs: QuadraticSurd<T>,
 ) -> Option<(QuadraticSurd<T>, QuadraticSurd<T>)>
@@ -1001,16 +997,14 @@ where
 
 #[inline]
 #[cfg(feature = "complex")]
-fn reduce_bin_op<T: QuadraticSurdBase>(
+fn reduce_bin_op<T: QuadraticBase>(
     lhs: QuadraticSurd<T>,
     rhs: QuadraticSurd<T>,
 ) -> Option<(QuadraticSurd<T>, QuadraticSurd<T>)>
 where
     for<'r> &'r T: RefNum<T>,
 {
-    if (lhs.discr.is_negative() && rhs.discr.is_positive())
-        || (lhs.discr.is_positive() && rhs.discr.is_negative())
-    {
+    if lhs.discr.is_negative() ^ rhs.discr.is_negative() {
         return None;
     }
 
@@ -1032,7 +1026,7 @@ where
 }
 
 #[inline]
-fn reduce_bin_op_unwrap<T: QuadraticSurdBase>(
+fn reduce_bin_op_unwrap<T: QuadraticBase>(
     lhs: QuadraticSurd<T>,
     rhs: QuadraticSurd<T>,
 ) -> (QuadraticSurd<T>, QuadraticSurd<T>)
@@ -1044,7 +1038,7 @@ where
 
 macro_rules! forward_binop {
     (impl $imp:ident, $rhs:ty, $method:ident) => {
-        impl<T: QuadraticSurdBase> $imp<$rhs> for QuadraticSurd<T>
+        impl<T: QuadraticBase> $imp<$rhs> for QuadraticSurd<T>
         where
             for<'r> &'r T: RefNum<T>,
         {
@@ -1066,8 +1060,8 @@ forward_binop!(impl Mul, Ratio<T>, mul);
 forward_binop!(impl Div, T, div);
 forward_binop!(impl Div, Ratio<T>, div);
 
-// TODO: implemented checked_add, checked_sub, checked_mul, checked_div
-impl<T: QuadraticSurdBase> Add for QuadraticSurd<T>
+// TODO: implement checked_add, checked_sub, checked_mul, checked_div, checking both overflow and discr dismatch
+impl<T: QuadraticBase> Add for QuadraticSurd<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
@@ -1087,7 +1081,7 @@ where
     }
 }
 
-impl<T: QuadraticSurdBase> Sub for QuadraticSurd<T>
+impl<T: QuadraticBase> Sub for QuadraticSurd<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
@@ -1107,7 +1101,7 @@ where
     }
 }
 
-impl<T: QuadraticSurdBase> Mul for QuadraticSurd<T>
+impl<T: QuadraticBase> Mul for QuadraticSurd<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
@@ -1141,7 +1135,7 @@ where
     }
 }
 
-impl<T: QuadraticSurdBase> Div for QuadraticSurd<T>
+impl<T: QuadraticBase> Div for QuadraticSurd<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
@@ -1175,7 +1169,7 @@ where
     }
 }
 
-impl<T: QuadraticSurdBase> Neg for QuadraticSurd<T>
+impl<T: QuadraticBase> Neg for QuadraticSurd<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
@@ -1186,7 +1180,7 @@ where
     }
 }
 
-impl<T: QuadraticSurdBase> Zero for QuadraticSurd<T>
+impl<T: QuadraticBase> Zero for QuadraticSurd<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
@@ -1203,7 +1197,7 @@ where
     }
 }
 
-impl<T: QuadraticSurdBase> One for QuadraticSurd<T>
+impl<T: QuadraticBase> One for QuadraticSurd<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
@@ -1242,7 +1236,7 @@ impl<T: Integer + FromPrimitive + Clone> FromPrimitive for QuadraticSurd<T> {
     }
 }
 
-impl<T: QuadraticSurdBase + ToPrimitive> ToPrimitive for QuadraticSurd<T>
+impl<T: QuadraticBase + ToPrimitive> ToPrimitive for QuadraticSurd<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
@@ -1286,7 +1280,7 @@ mod complex {
     use super::*;
     use num_complex::{Complex32, Complex64};
 
-    impl<T: QuadraticSurdBase + ToPrimitive> QuadraticSurd<T>
+    impl<T: QuadraticBase + ToPrimitive> QuadraticSurd<T>
     where
         for<'r> &'r T: RefNum<T>,
     {
@@ -1309,7 +1303,7 @@ mod complex {
     }
 }
 
-impl<T: QuadraticSurdBase> FromSqrt<T> for QuadraticSurd<T>
+impl<T: QuadraticBase> FromSqrt<T> for QuadraticSurd<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
@@ -1326,7 +1320,7 @@ where
     }
 }
 
-impl<T: QuadraticSurdBase + CheckedMul> FromSqrt<Ratio<T>> for QuadraticSurd<T>
+impl<T: QuadraticBase + CheckedMul> FromSqrt<Ratio<T>> for QuadraticSurd<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
@@ -1361,7 +1355,7 @@ where
     }
 }
 
-impl<T: QuadraticSurdBase + CheckedMul> FromSqrt<QuadraticSurd<T>> for QuadraticSurd<T>
+impl<T: QuadraticBase + CheckedMul> FromSqrt<QuadraticSurd<T>> for QuadraticSurd<T>
 where
     for<'r> &'r T: RefNum<T>,
 {

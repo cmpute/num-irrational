@@ -1,6 +1,14 @@
 //! Data structures and algorithms implementations related to
 //! quadratic numbers (roots of quadratic equation).
 
+use num_integer::Roots;
+use num_traits::{NumRef, Signed};
+
+/// A helper trait to define valid type that can be used for quadratic numbers
+pub trait QuadraticBase: Roots + NumRef + Clone + Signed {}
+impl<T: Roots + NumRef + Clone + Signed> QuadraticBase for T {}
+// FIXME: change to trait alias after https://github.com/rust-lang/rust/issues/41517
+
 pub mod integer;
 pub mod surd;
 use core::ops::{Add, Sub};
