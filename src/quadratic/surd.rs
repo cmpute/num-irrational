@@ -7,8 +7,10 @@ use crate::traits::{
 };
 #[cfg(feature = "complex")]
 use core::convert::TryFrom;
+#[cfg(feature = "complex")]
+use crate::GaussianInt;
 use core::ops::{Add, AddAssign, Div, Mul, Neg, Sub};
-use num_integer::{sqrt, Integer, Roots};
+use num_integer::{sqrt, Integer};
 use num_traits::{
     CheckedAdd, CheckedMul, FromPrimitive, NumRef, One, RefNum, Signed, ToPrimitive, Zero,
 };
@@ -193,6 +195,7 @@ impl<T> QuadraticSurd<T> {
 
 impl<T: Integer> QuadraticSurd<T> {
     /// Determine if the surd is an (rational) integer
+    // TODO(v0.2): should we only check if it's a Gaussian integer
     #[inline]
     pub fn is_integer(&self) -> bool {
         self.coeffs.2.is_one() && self.is_rational()
@@ -223,7 +226,7 @@ impl<T: Integer> QuadraticSurd<T> {
         self.coeffs.0.is_zero() && !self.coeffs.1.is_zero()
     }
 
-    #[inline]
+    #[inline(always)]
     fn panic_if_complex(&self) {
         // only need to check when we allow construction of complex surd number
         #[cfg(feature = "complex")]
@@ -445,15 +448,15 @@ where
         self.clone().conj()
     }
 
-    /// Round the surd to zero.
+    /// Round the surd toward zero.
     ///
     /// # Panics
-    /// if the number is complex
+    /// if the number is complex, when the `complex` feature is not enabled
     pub fn trunc(self) -> Self {
         self.panic_if_complex();
 
-        // TODO: ensure the algorithm is correct
-        // TODO (v0.2): truncate to gaussian integers if complex
+        // TODO: ensure the algorithm is correct, and add tests
+        // TODO: trunc to Gaussian integer if `complex` is enabled
         let bneg = self.coeffs.1.is_negative();
         let br = sqrt(&self.coeffs.1 * &self.coeffs.1 * self.discr);
         let num = if bneg {
@@ -464,7 +467,7 @@ where
         return Self::from(num / self.coeffs.2);
     }
 
-    /// `.trunc()` with reference
+    /// [QuadraticSurd::trunc()] with reference
     #[inline]
     pub fn trunc_ref(&self) -> Self {
         self.clone().trunc()
@@ -473,7 +476,7 @@ where
     /// Get the fractional part of the surd, ensuring `self.trunc() + self.fract() == self`
     ///
     /// # Panics
-    /// if the number is complex
+    /// if the number is complex, when the `complex` feature is not enabled
     #[inline]
     pub fn fract(self) -> Self {
         self.panic_if_complex();
@@ -482,7 +485,7 @@ where
         self - trunc
     }
 
-    /// `.fract()` with reference
+    /// [QuadraticSurd::fract()] with reference
     #[inline]
     pub fn fract_ref(&self) -> Self {
         self.clone() - self.trunc_ref()
@@ -1019,7 +1022,7 @@ where
     let result = if lhs.discr.abs() > rhs.discr.abs() {
         let hint = &lhs.discr / &rhs.discr;
         (lhs.reduce_root_hinted(hint), rhs)
-    } else if rhs.discr > lhs.discr {
+    } else if rhs.discr.abs() > lhs.discr.abs() {
         let hint = &rhs.discr / &lhs.discr;
         (lhs, rhs.reduce_root_hinted(hint))
     } else {

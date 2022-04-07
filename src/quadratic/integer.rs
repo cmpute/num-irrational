@@ -131,6 +131,10 @@ where
 {
     /// Get the norm of the quadratic integer (taking reference)
     fn norm_ref(&self, discr: &T) -> T {
+        if discr.is_zero() {
+            return &self.0 * &self.0
+        }
+
         match mod4d2(discr) {
             0 => {
                 // |a+bw| = (a+b/2)^2 - (b/2*sq)^2 = a^2+ab+b^2/4 - D*b^2/4 = a^2 + ab + b^2(1-D)/4
@@ -202,6 +206,10 @@ where
 
     #[inline]
     fn conj(self, discr: &T) -> Self {
+        if discr.is_zero() {
+            return self
+        }
+
         match mod4d2(discr) {
             0 => Self(
                 // conj(a+bw) = conj(a+b/2 + b/2*sq) = a+b/2 - b/2*sq = a+b - bw
@@ -370,7 +378,7 @@ where
     let result = if lhs.discr.abs() > rhs.discr.abs() {
         let hint = &lhs.discr / &rhs.discr;
         (lhs.reduce_root_hinted(hint), rhs)
-    } else if rhs.discr > lhs.discr {
+    } else if rhs.discr.abs() > lhs.discr.abs() {
         let hint = &rhs.discr / &lhs.discr;
         (lhs, rhs.reduce_root_hinted(hint))
     } else {
@@ -523,8 +531,12 @@ where
         }
         // TODO: add is_pure check
 
-        let (lhs, rhs) = reduce_bin_op_unwrap(self, rhs);
-        Self::from_coeffs(QuadraticOps::div(lhs.coeffs, rhs.coeffs, &lhs.discr), rhs.discr)
+        if self.is_rational() {
+            Self::from_coeffs(QuadraticOps::div(self.coeffs, rhs.coeffs, &rhs.discr), rhs.discr)
+        } else {
+            let (lhs, rhs) = reduce_bin_op_unwrap(self, rhs);
+            Self::from_coeffs(QuadraticOps::div(lhs.coeffs, rhs.coeffs, &lhs.discr), rhs.discr)
+        }
     }
 }
 
@@ -578,11 +590,33 @@ where
 #[cfg(feature = "complex")]
 mod complex {
     use super::*;
+
+    #[derive(Debug, Clone, Copy, PartialEq)]
     pub struct GaussianInt<T>(QuadraticIntCoeffs<T>);
+    impl<T: Eq> Eq for GaussianInt<T> {}
 
     impl<T> GaussianInt<T> {
         pub const fn new(re: T, im: T) -> Self {
             Self(QuadraticIntCoeffs(re, im))
+        }
+    }
+
+    impl<T: Signed> GaussianInt<T> {
+        pub fn conj(self) -> Self {
+            let QuadraticIntCoeffs(a, b) = self.0;
+            Self(QuadraticIntCoeffs(a, -b))
+        }
+    }
+
+    impl<T: Add<Output = T>> GaussianInt<T>
+    where
+        for<'r> &'r T: RefNum<T>, {
+        pub fn norm_ref(&self) -> T {
+            let QuadraticIntCoeffs(a, b) = &self.0;
+            a * a + b * b
+        }
+        pub fn norm(self) -> T {
+            self.norm_ref()
         }
     }
 
@@ -627,6 +661,17 @@ mod complex {
         #[inline]
         fn div(self, rhs: Self) -> Self::Output {
             Self(QuadraticOps::div(self.0, rhs.0, &-T::one()))
+        }
+    }
+    
+    impl<T: Integer + Signed + NumRef> Rem for GaussianInt<T>
+    where
+        for<'r> &'r T: RefNum<T>,
+    {
+        type Output = Self;
+        #[inline]
+        fn rem(self, rhs: Self) -> Self::Output {
+            Self(self.0.div_rem(rhs.0, &-T::one()).1)
         }
     }
 
@@ -781,12 +826,12 @@ mod tests {
     #[cfg(feature = "complex")]
     fn test_gaussian() {
         // test Gaussian integers
-        let q12 = QuadraticInt::new(1, 2, -1);
-        let qm12 = QuadraticInt::new(-1, 2, -1);
-        let q1m2 = QuadraticInt::new(1, -2, -1);
-        let q23 = QuadraticInt::new(2, 3, -1);
-        let qm23 = QuadraticInt::new(-2, 3, -1);
-        let q2m3 = QuadraticInt::new(2, -3, -1);
+        let q12 = GaussianInt::new(1, 2);
+        let qm12 = GaussianInt::new(-1, 2);
+        let q1m2 = GaussianInt::new(1, -2);
+        let q23 = GaussianInt::new(2, 3);
+        let qm23 = GaussianInt::new(-2, 3);
+        let q2m3 = GaussianInt::new(2, -3);
 
         assert_eq!(q12.conj(), q1m2);
         assert_eq!(q23.conj(), q2m3);
