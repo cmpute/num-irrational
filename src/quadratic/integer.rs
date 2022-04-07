@@ -3,7 +3,7 @@
 use super::{QuadraticOps, QuadraticBase};
 use core::ops::*;
 use num_integer::Roots;
-use num_traits::{NumRef, One, RefNum, Signed};
+use num_traits::{NumRef, One, RefNum, Signed, Zero};
 
 #[inline]
 fn four<T: Add<Output = T> + One>() -> T {
@@ -36,14 +36,26 @@ where
     }
 }
 
+// x/y rounded to the nearest integer. If frac(x/y) = 1/2, then round up.
+// TODO: change to div_rem_round, therefore avoid the need for Clone in Rem operations
 fn div_round<T: Signed + NumRef>(x: T, y: &T) -> T
 where
     for<'r> &'r T: RefNum<T>,
 {
-    if x.is_negative() ^ y.is_negative() {
-        (x - y / (T::one() + T::one())) / y
+    let two = T::one() + T::one();
+
+    if x.is_negative() {
+        if y.is_negative() {
+            (x + y / two) / y
+        } else {
+            (x - (y - T::one()) / two) / y
+        }
     } else {
-        (x + y / (T::one() + T::one())) / y
+        if y.is_negative() {
+            (x - (y + T::one()) / two) / y
+        } else {
+            (x + y / two) / y
+        }
     }
 }
 
@@ -54,6 +66,13 @@ where
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct QuadraticIntCoeffs<T>(pub T, pub T);
 
+impl<T: Add<Output = T>> Add<T> for QuadraticIntCoeffs<T> {
+    type Output = Self;
+    #[inline]
+    fn add(self, rhs: T) -> Self::Output {
+        Self(self.0 + rhs, self.1)
+    }
+}
 impl<T: Add<Output = T>> Add for QuadraticIntCoeffs<T> {
     type Output = Self;
     #[inline]
@@ -62,11 +81,45 @@ impl<T: Add<Output = T>> Add for QuadraticIntCoeffs<T> {
     }
 }
 
+impl<T: Sub<Output = T>> Sub<T> for QuadraticIntCoeffs<T> {
+    type Output = Self;
+    #[inline]
+    fn sub(self, rhs: T) -> Self::Output {
+        Self(self.0 - rhs, self.1)
+    }
+}
 impl<T: Sub<Output = T>> Sub for QuadraticIntCoeffs<T> {
     type Output = Self;
     #[inline]
     fn sub(self, rhs: Self) -> Self::Output {
         Self(self.0 - rhs.0, self.1 - rhs.1)
+    }
+}
+
+impl<T: Signed + NumRef> Mul<T> for QuadraticIntCoeffs<T> {
+    type Output = Self;
+    #[inline]
+    fn mul(self, rhs: T) -> Self::Output {
+        Self(self.0 * &rhs, self.1 * rhs)
+    }
+}
+
+impl<T: Signed + NumRef> Div<T> for QuadraticIntCoeffs<T>
+where
+    for<'r> &'r T: RefNum<T> {
+    type Output = Self;
+    #[inline]
+    fn div(self, rhs: T) -> Self::Output {
+        Self(div_round(self.0, &rhs), div_round(self.1, &rhs))
+    }
+}
+impl<T: Signed + NumRef + Clone> Rem<T> for QuadraticIntCoeffs<T>
+where
+    for<'r> &'r T: RefNum<T> {
+    type Output = Self;
+    #[inline]
+    fn rem(self, rhs: T) -> Self::Output {
+        self.clone() - (self / rhs.clone()) * rhs
     }
 }
 
@@ -113,6 +166,7 @@ where
         let n = Self::norm(rhs, discr);
         Self(div_round(a, &n), div_round(b, &n))
     }
+
     #[inline]
     fn conj(self, discr: &T) -> Self {
         match mod4d2(discr) {
@@ -146,10 +200,10 @@ where
 /// latter will be in normal fields of real numbers or complex numbers, while the operations
 /// for the former will be in the Quadratic Field (specifically in the quadratic integer ring ℤ\[ω\])
 /// The arithmetic operations can only be performed between the integers with the same base.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy)]
 pub struct QuadraticInt<T> {
-    coeffs: QuadraticIntCoeffs<T>,
-    discr: T,
+    coeffs: QuadraticIntCoeffs<T>, // (a, b), b = 0 is ensured when D = 0
+    discr: T, // D
 }
 
 impl<T: Signed + NumRef> QuadraticInt<T>
@@ -160,6 +214,14 @@ where
     /// Note that r must be not divisible by 4 (to be square free), otherwise the factor 4
     /// will be extracted from r to b.
     pub fn new(a: T, b: T, r: T) -> Self {
+        if b.is_zero() || r.is_zero() {
+            return Self { coeffs: QuadraticIntCoeffs(a, T::zero()), discr: T::zero() }
+        }
+        #[cfg(not(feature = "complex"))]
+        if r.is_negative() {
+            panic!("Negative root is not supported without the `complex` feature");
+        }
+
         let mut b = b;
         let mut discr = r;
         while (&discr % four::<T>()).is_zero() {
@@ -170,6 +232,10 @@ where
             coeffs: QuadraticIntCoeffs(a, b),
             discr,
         }
+    }
+    #[inline]
+    pub fn from_coeffs(coeffs: QuadraticIntCoeffs<T>, r: T) -> Self {
+        Self::new(coeffs.0, coeffs.1, r)
     }
 
     #[inline]
@@ -183,6 +249,10 @@ where
     pub fn norm(self) -> T {
         self.coeffs.norm(&self.discr)
     }
+    #[inline]
+    pub fn is_rational(&self) -> bool {
+        self.coeffs.1.is_zero()
+    }
 
     /// Get the fundamental unit of the quadratic field ℚ[√d]
     fn unit(d: T) -> Self {
@@ -190,6 +260,7 @@ where
         unimplemented!()
     }
 }
+
 impl<T: QuadraticBase> QuadraticInt<T>
 where
     for<'r> &'r T: RefNum<T>,
@@ -209,8 +280,8 @@ where
                 // if hint is a square number, then remove the hint factor
                 // note that r ≡ r/a^2 mod 4 (given a is odd)
                 return Self::new(
-                    self.coeffs.0 * &root,
-                    self.coeffs.1 * &root,
+                    self.coeffs.0,
+                    self.coeffs.1 * root,
                     quo
                 );
             }
@@ -220,7 +291,13 @@ where
     }
 }
 
-// TODO: reduce root base for binary operations
+impl<T: Neg<Output = T>> Neg for QuadraticInt<T> {
+    type Output = Self;
+    fn neg(self) -> Self::Output {
+        Self{ coeffs: QuadraticIntCoeffs(-self.coeffs.0, -self.coeffs.1), discr: self.discr }
+    }
+}
+
 // Reduce root base for binary operands. Return None if the two bases
 // cannot be matched. This function assumes the root bases on both sides
 // are not zero
@@ -294,59 +371,183 @@ where
     reduce_bin_op(lhs, rhs).expect("two root bases are not compatible!")
 }
 
-impl<T: Add<Output = T>> Add for QuadraticInt<T>
+impl<T: QuadraticBase> PartialEq for QuadraticInt<T>
+where
+    for<'r> &'r T: RefNum<T>, {
+    fn eq(&self, other: &Self) -> bool {
+        // shortcuts
+        if self.discr == other.discr {
+            return self.coeffs == other.coeffs;
+        }
+        if self.discr.is_zero() || other.discr.is_zero() {
+            return false;
+        }
+
+        let QuadraticIntCoeffs(la, lb) = &self.coeffs;
+        let QuadraticIntCoeffs(ra, rb) = &other.coeffs;
+        la == ra && lb * lb * &self.discr == rb * rb * &other.discr
+    }
+}
+
+impl<T: QuadraticBase> Eq for QuadraticInt<T>
+where
+    for<'r> &'r T: RefNum<T>, { }
+
+impl<T: Add<Output = T>> Add<T> for QuadraticInt<T> {
+    type Output = Self;
+    fn add(self, rhs: T) -> Self::Output {
+        Self { coeffs: self.coeffs + rhs, discr: self.discr }
+    }
+}
+impl<T: QuadraticBase> Add for QuadraticInt<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
     type Output = Self;
     #[inline]
     fn add(self, rhs: Self) -> Self::Output {
-        Self {
-            coeffs: self.coeffs + rhs.coeffs,
-            discr: rhs.discr,
+        if rhs.is_rational() {
+            return self + rhs.coeffs.0;
         }
+        if self.is_rational() {
+            return rhs + self.coeffs.0;
+        }
+
+        let (lhs, rhs) = reduce_bin_op_unwrap(self, rhs);
+        Self::from_coeffs(lhs.coeffs + rhs.coeffs, rhs.discr)
     }
 }
 
-impl<T: Sub<Output = T>> Sub for QuadraticInt<T>
+impl<T: Sub<Output = T>> Sub<T> for QuadraticInt<T> {
+    type Output = Self;
+    fn sub(self, rhs: T) -> Self::Output {
+        Self { coeffs: self.coeffs - rhs, discr: self.discr }
+    }
+}
+impl<T: QuadraticBase> Sub for QuadraticInt<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
     type Output = Self;
     #[inline]
     fn sub(self, rhs: Self) -> Self::Output {
-        Self {
-            coeffs: self.coeffs - rhs.coeffs,
-            discr: rhs.discr,
+        if rhs.is_rational() {
+            return self - rhs.coeffs.0;
         }
+        if self.is_rational() {
+            return -(rhs - self.coeffs.0);
+        }
+
+        let (lhs, rhs) = reduce_bin_op_unwrap(self, rhs);
+        Self::from_coeffs(lhs.coeffs - rhs.coeffs, rhs.discr)
     }
 }
 
-impl<T: Signed + NumRef> Mul for QuadraticInt<T>
+impl<T: QuadraticBase> Mul<T> for QuadraticInt<T>
+where
+    for<'r> &'r T: RefNum<T>,
+{
+    type Output = Self;
+    #[inline]
+    fn mul(self, rhs: T) -> Self::Output {
+        if rhs.is_zero() {
+            Self::zero()
+        } else {
+            Self { coeffs: self.coeffs * rhs, discr: self.discr }
+        }
+    }
+}
+impl<T: QuadraticBase> Mul for QuadraticInt<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
     type Output = Self;
     #[inline]
     fn mul(self, rhs: Self) -> Self::Output {
-        Self {
-            coeffs: self.coeffs.mul(rhs.coeffs, &self.discr),
-            discr: rhs.discr,
+        if rhs.is_rational() {
+            return self * rhs.coeffs.0;
         }
+        if self.is_rational() {
+            return rhs * self.coeffs.0;
+        }
+        // TODO: add is_pure check
+
+        let (lhs, rhs) = reduce_bin_op_unwrap(self, rhs);
+        Self::from_coeffs(QuadraticOps::mul(lhs.coeffs, rhs.coeffs, &lhs.discr), rhs.discr)
     }
 }
 
-impl<T: Signed + NumRef> Div for QuadraticInt<T>
+impl<T: QuadraticBase> Div<T> for QuadraticInt<T>
+where
+    for<'r> &'r T: RefNum<T>,
+{
+    type Output = Self;
+    #[inline]
+    fn div(self, rhs: T) -> Self::Output {
+        Self { coeffs: self.coeffs / rhs, discr: self.discr }
+    }
+}
+impl<T: QuadraticBase> Div for QuadraticInt<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
     type Output = Self;
     #[inline]
     fn div(self, rhs: Self) -> Self::Output {
-        Self {
-            coeffs: self.coeffs.div(rhs.coeffs, &self.discr),
-            discr: rhs.discr,
+        if rhs.is_rational() {
+            return self / rhs.coeffs.0;
         }
+        // TODO: add is_pure check
+
+        let (lhs, rhs) = reduce_bin_op_unwrap(self, rhs);
+        Self::from_coeffs(QuadraticOps::div(lhs.coeffs, rhs.coeffs, &lhs.discr), rhs.discr)
+    }
+}
+
+impl<T: QuadraticBase> Rem<T> for QuadraticInt<T>
+where
+    for<'r> &'r T: RefNum<T>,
+{
+    type Output = Self;
+    #[inline]
+    fn rem(self, rhs: T) -> Self::Output {
+        Self { coeffs: self.coeffs % rhs, discr: self.discr }
+    }
+}
+impl<T: QuadraticBase> Rem for QuadraticInt<T>
+where
+    for<'r> &'r T: RefNum<T>,
+{
+    type Output = Self;
+    #[inline]
+    fn rem(self, rhs: Self) -> Self::Output {
+        if rhs.is_rational() {
+            return self / rhs.coeffs.0;
+        }
+        // TODO: add is_pure check
+
+        let (lhs, rhs) = reduce_bin_op_unwrap(self, rhs);
+        Self::from_coeffs(lhs.coeffs.clone() - QuadraticOps::mul(QuadraticOps::div(lhs.coeffs, rhs.coeffs.clone(), &lhs.discr), rhs.coeffs, &lhs.discr), rhs.discr)
+    }
+}
+
+impl<T: QuadraticBase> Zero for QuadraticInt<T>
+where
+    for<'r> &'r T: RefNum<T>, {
+    fn zero() -> Self {
+        Self { coeffs: QuadraticIntCoeffs(T::zero(), T::zero()), discr: T::zero() }
+    }
+
+    fn is_zero(&self) -> bool {
+        self.coeffs.0.is_zero() && self.coeffs.1.is_zero()
+    }
+}
+
+impl<T: QuadraticBase> One for QuadraticInt<T>
+where
+    for<'r> &'r T: RefNum<T>, {
+    fn one() -> Self {
+        Self { coeffs: QuadraticIntCoeffs(T::one(), T::zero()), discr: T::zero() }
     }
 }
 
@@ -390,7 +591,7 @@ mod complex {
         type Output = Self;
         #[inline]
         fn mul(self, rhs: Self) -> Self::Output {
-            Self(self.0.mul(rhs.0, &-T::one()))
+            Self(QuadraticOps::mul(self.0, rhs.0, &-T::one()))
         }
     }
 
@@ -401,7 +602,7 @@ mod complex {
         type Output = Self;
         #[inline]
         fn div(self, rhs: Self) -> Self::Output {
-            Self(self.0.div(rhs.0, &-T::one()))
+            Self(QuadraticOps::div(self.0, rhs.0, &-T::one()))
         }
     }
 
@@ -417,14 +618,48 @@ mod tests {
     use super::*;
 
     #[test]
+    fn div_round_test() {
+        const CASES: [(i8, i8, i8); 18] = [
+            // x, y, round(x/y)
+            (-4, 4, -1),
+            (-3, 4, -1),
+            (-2, 4, 0),
+            (-1, 4, 0),
+            (0, 4, 0),
+            (1, 4, 0),
+            (2, 4, 1),
+            (3, 4, 1),
+            (4, 4, 1),
+
+            (-4, -4, 1),
+            (-3, -4, 1),
+            (-2, -4, 1),
+            (-1, -4, 0),
+            (0, -4, 0),
+            (1, -4, 0),
+            (2, -4, 0),
+            (3, -4, -1),
+            (4, -4, -1),
+        ];
+        for (x, y, r) in CASES {
+            assert_eq!(div_round(x, &y), r, "round({} / {}) != {}", x, y, r);
+        }
+    }
+
+    #[test]
     fn test_ops_unit() {
-        // unit complex number tests
-        let e1 = QuadraticInt::new(1, 0, -1);
-        let e2 = QuadraticInt::new(0, 1, -1);
-        let e3 = QuadraticInt::new(-1, 0, -1);
-        let e4 = QuadraticInt::new(0, -1, -1);
-        let m12 = QuadraticInt::new(1, 1, -1);
-        let m34 = QuadraticInt::new(-1, -1, -1);
+        let zero = QuadraticInt::new(0, 0, 2);
+        let e1 = QuadraticInt::new(1, 0, 2);
+        let e2 = QuadraticInt::new(0, 1, 2);
+        let e3 = QuadraticInt::new(-1, 0, 2);
+        let e4 = QuadraticInt::new(0, -1, 2);
+        let m12 = QuadraticInt::new(1, 1, 2);
+        let m34 = QuadraticInt::new(-1, -1, 2);
+
+        assert_eq!(e1 + zero, e1);
+        assert_eq!(e1 - zero, e1);
+        assert_eq!(e1 * zero, zero);
+        assert_eq!(zero / e1, zero);
 
         assert_eq!(e1 + e2, m12);
         assert_eq!(e3 + e4, m34);
@@ -439,17 +674,87 @@ mod tests {
         assert_eq!(e4 * e1, e4);
         assert_eq!(e4 / e1, e4);
 
-        assert_eq!(e1.norm(), 1);
-        assert_eq!(e2.norm(), 1);
-        assert_eq!(e3.norm(), 1);
-        assert_eq!(e4.norm(), 1);
-        assert_eq!(e1.conj(), e1);
-        assert_eq!(e2.conj(), e4);
-        assert_eq!(e3.conj(), e3);
-        assert_eq!(e4.conj(), e2);
+        #[cfg(feature = "complex")]
+        {
+            // unit complex number tests
+            let zero = QuadraticInt::new(0, 0, 2);
+            let e1 = QuadraticInt::new(1, 0, -1);
+            let e2 = QuadraticInt::new(0, 1, -1);
+            let e3 = QuadraticInt::new(-1, 0, -1);
+            let e4 = QuadraticInt::new(0, -1, -1);
+            let m12 = QuadraticInt::new(1, 1, -1);
+            let m34 = QuadraticInt::new(-1, -1, -1);
+
+            assert_eq!(e1 + zero, e1);
+            assert_eq!(e1 - zero, e1);
+            assert_eq!(e1 * zero, zero);
+            assert_eq!(zero / e1, zero);
+
+            assert_eq!(e1 + e2, m12);
+            assert_eq!(e3 + e4, m34);
+            assert_eq!(m12 - e1, e2);
+            assert_eq!(m34 - e3, e4);
+            assert_eq!(e1 * e2, e2);
+            assert_eq!(e2 / e1, e2);
+            assert_eq!(e2 * e3, e4);
+            assert_eq!(e4 / e2, e3);
+            assert_eq!(e3 * e4, e2);
+            assert_eq!(e2 / e3, e4);
+            assert_eq!(e4 * e1, e4);
+            assert_eq!(e4 / e1, e4);
+
+            assert_eq!(e1.norm(), 1);
+            assert_eq!(e2.norm(), 1);
+            assert_eq!(e3.norm(), 1);
+            assert_eq!(e4.norm(), 1);
+            assert_eq!(e1.conj(), e1);
+            assert_eq!(e2.conj(), e4);
+            assert_eq!(e3.conj(), e3);
+            assert_eq!(e4.conj(), e2);
+        }
     }
 
     #[test]
+    fn test_ops() {
+        let a = QuadraticInt::new(1, 3, 2);
+        let b = QuadraticInt::new(-2, -1, 2);
+        let c = QuadraticInt::new(-1, 2, 2);
+
+        assert_eq!(a + b, QuadraticInt::new(-1, 2, 2));
+        assert_eq!(a - b, QuadraticInt::new(3, 4, 2));
+        assert_eq!(a * b, QuadraticInt::new(-8, -7, 2));
+        assert_eq!(a / b, QuadraticInt::new(2, -2, 2));
+        assert_eq!(a % b, QuadraticInt::new(1, 1, 2));
+
+        assert_eq!(b + c, QuadraticInt::new(-3, 1, 2));
+        assert_eq!(b - c, QuadraticInt::new(-1, -3, 2));
+        assert_eq!(b * c, QuadraticInt::new(-2, -3, 2));
+        assert_eq!(b / c, QuadraticInt::new(-1, -1, 2));
+        assert_eq!(b % c, QuadraticInt::new(1, 0, 2));
+    }
+
+    #[test]
+    fn test_different_bases() {
+        let a = QuadraticInt::new(1, 6, 5);
+        let b = QuadraticInt::new(1, 3, 20);
+        let c = QuadraticInt::new(1, 2, 45);
+
+        assert_eq!(a, b);
+        assert_eq!(a, c);
+        assert_eq!(a + b, a + a);
+        assert_eq!(a + c, a + a);
+        assert_eq!(a - b, QuadraticInt::zero());
+        assert_eq!(a - c, QuadraticInt::zero());
+        assert_eq!(a * b, a * a);
+        assert_eq!(a * c, a * a);
+        assert_eq!(a / b, QuadraticInt::one());
+        assert_eq!(a / c, QuadraticInt::one());
+        assert_eq!(a % b, QuadraticInt::zero());
+        assert_eq!(a % c, QuadraticInt::zero());
+    }
+
+    #[test]
+    #[cfg(feature = "complex")]
     fn test_gaussian() {
         // test Gaussian integers
         let q12 = QuadraticInt::new(1, 2, -1);
@@ -473,6 +778,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "complex")]
     fn test_eisenstein() {
         // test Eisenstein integers
         let q12 = QuadraticInt::new(1, 2, -3);

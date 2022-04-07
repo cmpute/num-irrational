@@ -192,10 +192,16 @@ impl<T> QuadraticSurd<T> {
 }
 
 impl<T: Integer> QuadraticSurd<T> {
-    /// Determine if the surd is an integer
+    /// Determine if the surd is an (rational) integer
     #[inline]
     pub fn is_integer(&self) -> bool {
         self.coeffs.2.is_one() && self.is_rational()
+    }
+
+    /// Determine if the surd is a quadratic integer
+    #[inline]
+    fn is_quadint(&self) -> bool {
+        unimplemented!() // TODO(v0.2): implement
     }
 
     /// Determine if the surd is a rational number
@@ -1068,11 +1074,11 @@ where
     type Output = Self;
     fn add(self, rhs: Self) -> Self {
         // shortcuts for trivial cases
-        if self.is_rational() {
-            return rhs - Ratio::<T>::new(self.coeffs.0, self.coeffs.2);
-        }
         if rhs.is_rational() {
             return self + Ratio::<T>::new(rhs.coeffs.0, rhs.coeffs.2);
+        }
+        if self.is_rational() {
+            return rhs + Ratio::<T>::new(self.coeffs.0, self.coeffs.2);
         }
 
         // ensure that two operands have compatible bases
@@ -1088,11 +1094,11 @@ where
     type Output = Self;
     fn sub(self, rhs: Self) -> Self {
         // shortcuts for trivial cases
-        if self.is_rational() {
-            return -(rhs - Ratio::<T>::new(self.coeffs.0, self.coeffs.2));
-        }
         if rhs.is_rational() {
             return self - Ratio::<T>::new(rhs.coeffs.0, rhs.coeffs.2);
+        }
+        if self.is_rational() {
+            return -(rhs - Ratio::<T>::new(self.coeffs.0, self.coeffs.2));
         }
 
         // ensure that two operands have compatible bases
@@ -1109,11 +1115,11 @@ where
     #[inline]
     fn mul(self, rhs: Self) -> Self {
         // shortcuts for trivial cases
-        if self.is_rational() {
-            return rhs * Ratio::<T>::new(self.coeffs.0, self.coeffs.2);
-        }
         if rhs.is_rational() {
             return self * Ratio::<T>::new(rhs.coeffs.0, rhs.coeffs.2);
+        }
+        if self.is_rational() {
+            return rhs * Ratio::<T>::new(self.coeffs.0, self.coeffs.2);
         }
         if self.is_pure() && rhs.is_pure() {
             let gcd = self.discr.gcd(&rhs.discr);
@@ -1143,11 +1149,11 @@ where
     #[inline]
     fn div(self, rhs: Self) -> Self {
         // shortcuts for trivial cases
-        if self.is_rational() {
-            return (rhs / Ratio::<T>::new(self.coeffs.0, self.coeffs.2)).recip();
-        }
         if rhs.is_rational() {
             return self / Ratio::<T>::new(rhs.coeffs.0, rhs.coeffs.2);
+        }
+        if self.is_rational() {
+            return (rhs / Ratio::<T>::new(self.coeffs.0, self.coeffs.2)).recip();
         }
         if self.is_pure() && rhs.is_pure() {
             let gcd = self.discr.gcd(&rhs.discr);
@@ -1614,77 +1620,77 @@ mod tests {
 
     #[test]
     fn formatting_test() {
-        assert_eq!(format!("{}", QuadraticSurd::<i32>::zero()), "0");
-        assert_eq!(format!("{}", QuadraticSurd::<i32>::one()), "1");
+        assert_eq!(format!("{}", QuadraticSurd::<i8>::zero()), "0");
+        assert_eq!(format!("{}", QuadraticSurd::<i8>::one()), "1");
         assert_eq!(
-            format!("{}", QuadraticSurd::<i32>::from_sqrt(5).unwrap()),
+            format!("{}", QuadraticSurd::from_sqrt(5).unwrap()),
             "√5"
         );
 
-        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(1, 1, 1, 5)), "1+√5");
+        assert_eq!(format!("{}", QuadraticSurd::new(1, 1, 1, 5)), "1+√5");
         assert_eq!(
-            format!("{}", QuadraticSurd::<i32>::new(1, -1, 1, 5)),
+            format!("{}", QuadraticSurd::new(1, -1, 1, 5)),
             "1-√5"
         );
         assert_eq!(
-            format!("{}", QuadraticSurd::<i32>::new(-1, 1, 1, 5)),
+            format!("{}", QuadraticSurd::new(-1, 1, 1, 5)),
             "-1+√5"
         );
         assert_eq!(
-            format!("{}", QuadraticSurd::<i32>::new(-1, -1, 1, 5)),
+            format!("{}", QuadraticSurd::new(-1, -1, 1, 5)),
             "-1-√5"
         );
         assert_eq!(
-            format!("{}", QuadraticSurd::<i32>::new(1, 2, 1, 5)),
+            format!("{}", QuadraticSurd::new(1, 2, 1, 5)),
             "1+2√5"
         );
         assert_eq!(
-            format!("{}", QuadraticSurd::<i32>::new(1, -2, 1, 5)),
+            format!("{}", QuadraticSurd::new(1, -2, 1, 5)),
             "1-2√5"
         );
         assert_eq!(
-            format!("{}", QuadraticSurd::<i32>::new(-1, 2, 1, 5)),
+            format!("{}", QuadraticSurd::new(-1, 2, 1, 5)),
             "-1+2√5"
         );
         assert_eq!(
-            format!("{}", QuadraticSurd::<i32>::new(-1, -2, 1, 5)),
+            format!("{}", QuadraticSurd::new(-1, -2, 1, 5)),
             "-1-2√5"
         );
-        assert_eq!(format!("{}", QuadraticSurd::<i32>::new(1, 0, 2, 5)), "1/2");
+        assert_eq!(format!("{}", QuadraticSurd::new(1, 0, 2, 5)), "1/2");
         assert_eq!(
-            format!("{}", QuadraticSurd::<i32>::new(-1, 0, 2, 5)),
+            format!("{}", QuadraticSurd::new(-1, 0, 2, 5)),
             "-1/2"
         );
         assert_eq!(
-            format!("{}", QuadraticSurd::<i32>::new(1, 1, 2, 5)),
+            format!("{}", QuadraticSurd::new(1, 1, 2, 5)),
             "(1+√5)/2"
         );
         assert_eq!(
-            format!("{}", QuadraticSurd::<i32>::new(1, -1, 2, 5)),
+            format!("{}", QuadraticSurd::new(1, -1, 2, 5)),
             "(1-√5)/2"
         );
         assert_eq!(
-            format!("{}", QuadraticSurd::<i32>::new(-1, 1, 2, 5)),
+            format!("{}", QuadraticSurd::new(-1, 1, 2, 5)),
             "(-1+√5)/2"
         );
         assert_eq!(
-            format!("{}", QuadraticSurd::<i32>::new(-1, -1, 2, 5)),
+            format!("{}", QuadraticSurd::new(-1, -1, 2, 5)),
             "(-1-√5)/2"
         );
         assert_eq!(
-            format!("{}", QuadraticSurd::<i32>::new(1, 2, 2, 5)),
+            format!("{}", QuadraticSurd::new(1, 2, 2, 5)),
             "(1+2√5)/2"
         );
         assert_eq!(
-            format!("{}", QuadraticSurd::<i32>::new(1, -2, 2, 5)),
+            format!("{}", QuadraticSurd::new(1, -2, 2, 5)),
             "(1-2√5)/2"
         );
         assert_eq!(
-            format!("{}", QuadraticSurd::<i32>::new(-1, 2, 2, 5)),
+            format!("{}", QuadraticSurd::new(-1, 2, 2, 5)),
             "(-1+2√5)/2"
         );
         assert_eq!(
-            format!("{}", QuadraticSurd::<i32>::new(-1, -2, 2, 5)),
+            format!("{}", QuadraticSurd::new(-1, -2, 2, 5)),
             "(-1-2√5)/2"
         );
     }

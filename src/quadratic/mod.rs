@@ -20,7 +20,7 @@ pub trait QuadraticOps<Rhs = Self, Discr = Self, Output = Self>:
     type Scalar;
 
     fn mul(self, rhs: Rhs, discr: Discr) -> Output;
-    fn div(self, rhs: Rhs, discr: Discr) -> Output;
+    fn div(self, rhs: Rhs, discr: Discr) -> Output; // TODO(v0.2): change to div_rem? we need to define rem for QuadraticSurd first
 
     /// Get the conjugate of the quadratic integer.
     ///
