@@ -201,7 +201,7 @@ impl<T: Integer> QuadraticSurd<T> {
     /// Determine if the surd is a quadratic integer
     #[inline]
     fn is_quadint(&self) -> bool {
-        unimplemented!() // TODO(v0.2): implement
+        unimplemented!()
     }
 
     /// Determine if the surd is a rational number
@@ -504,6 +504,8 @@ where
     pub fn denom(&self) -> Self {
         Self::from(self.coeffs.2.clone())
     }
+
+    // TODO: add ceil(), floor(), round()
 
     /// Converts to an integer, rounding towards zero
     ///

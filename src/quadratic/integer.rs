@@ -2,7 +2,7 @@
 
 use super::{QuadraticOps, QuadraticBase};
 use core::ops::*;
-use num_integer::Roots;
+use num_integer::Integer;
 use num_traits::{NumRef, One, RefNum, Signed, Zero};
 
 #[inline]
@@ -37,26 +37,27 @@ where
 }
 
 // x/y rounded to the nearest integer. If frac(x/y) = 1/2, then round up.
-// TODO: change to div_rem_round, therefore avoid the need for Clone in Rem operations
-fn div_round<T: Signed + NumRef>(x: T, y: &T) -> T
+#[inline]
+fn div_rem_round<T: Integer + Signed + NumRef>(x: T, y: &T) -> (T, T)
 where
     for<'r> &'r T: RefNum<T>,
 {
     let two = T::one() + T::one();
-
-    if x.is_negative() {
+    let offset = if x.is_negative() {
         if y.is_negative() {
-            (x + y / two) / y
+            y / two
         } else {
-            (x - (y - T::one()) / two) / y
+            -(y - T::one()) / two
         }
     } else {
         if y.is_negative() {
-            (x - (y + T::one()) / two) / y
+            -(y + T::one()) / two
         } else {
-            (x + y / two) / y
+            y / two
         }
-    }
+    };
+    let (q, r) = (x + &offset).div_rem(y);
+    (q, r - offset)
 }
 
 /// Underlying representation of a quadratic integer `a + bω` as (a,b), where `ω` is `√D` or `(1+√D)/2`.
@@ -104,26 +105,76 @@ impl<T: Signed + NumRef> Mul<T> for QuadraticIntCoeffs<T> {
     }
 }
 
-impl<T: Signed + NumRef> Div<T> for QuadraticIntCoeffs<T>
+impl<T: Integer + Signed + NumRef> Div<T> for QuadraticIntCoeffs<T>
 where
     for<'r> &'r T: RefNum<T> {
     type Output = Self;
     #[inline]
     fn div(self, rhs: T) -> Self::Output {
-        Self(div_round(self.0, &rhs), div_round(self.1, &rhs))
+        Self(div_rem_round(self.0, &rhs).0, div_rem_round(self.1, &rhs).0)
     }
 }
-impl<T: Signed + NumRef + Clone> Rem<T> for QuadraticIntCoeffs<T>
+impl<T: Integer + Signed + NumRef + Clone> Rem<T> for QuadraticIntCoeffs<T>
 where
     for<'r> &'r T: RefNum<T> {
     type Output = Self;
     #[inline]
     fn rem(self, rhs: T) -> Self::Output {
-        self.clone() - (self / rhs.clone()) * rhs
+        Self(div_rem_round(self.0, &rhs).1, div_rem_round(self.1, &rhs).1)
     }
 }
 
-impl<T: Signed + NumRef> QuadraticOps<Self, &T, Self> for QuadraticIntCoeffs<T>
+
+impl<T: Integer + Signed + NumRef> QuadraticIntCoeffs<T>
+where
+    for<'r> &'r T: RefNum<T>,
+{
+    /// Get the norm of the quadratic integer (taking reference)
+    fn norm_ref(&self, discr: &T) -> T {
+        match mod4d2(discr) {
+            0 => {
+                // |a+bw| = (a+b/2)^2 - (b/2*sq)^2 = a^2+ab+b^2/4 - D*b^2/4 = a^2 + ab + b^2(1-D)/4
+                &self.0 * &self.0
+                    + &self.0 * &self.1
+                    + &self.1 * &self.1 * ((T::one() - discr) / four::<T>())
+            }
+            1 => &self.0 * &self.0 - &self.1 * &self.1 * discr,
+            _ => unreachable!(),
+        }
+    }
+
+    /// Get the quotient and the remainder of self / rhs
+    fn div_rem(self, rhs: Self, discr: &T) -> (Self, Self) {
+        // This division algorithm is compatible with Gaussian and Eisenstein integers,
+        // but it's not necessarily a proper Euclidean division algorithm for any
+        // quadratic integers.
+
+        let (a, b) = match mod4d2(discr) {
+            0 => (
+                // (a+bw)/(c+dw) = (a+bw)*conj(c+dw)/|c+dw| = (a+bw)(c+d-dw) / |c+dw|
+                // = (ac+ad-adw+bcw+bdw-bdw^2)/|c+dw|
+                // = (ac+ad-bd*(D-1)/4)/|c+dw| + (-ad+bc)w/|c+dw|
+                &self.0 * &rhs.0 + &self.0 * &rhs.1
+                    - &self.1 * &rhs.1 * ((discr - T::one()) / four::<T>()),
+                &self.1 * &rhs.0 - &self.0 * &rhs.1,
+            ),
+            1 => (
+                // (a+bw)/(c+dw) = (a+bw)*conj(c+dw)/|c+dw| = (a+bw)(c-dw) / |c+dw|
+                // = (ac-bd*D)/|c+dw| + (bc-ad)w/|c+dw|
+                &self.0 * &rhs.0 - &self.1 * &rhs.1 * discr,
+                &self.1 * &rhs.0 - &self.0 * &rhs.1,
+            ),
+            _ => unreachable!(),
+        };
+        let n = rhs.norm_ref(discr);
+        let (aq, ar) = div_rem_round(a, &n);
+        let (bq, br) = div_rem_round(b, &n);
+        let (q, r) = (Self(aq, bq), Self(ar, br));
+        (q, QuadraticOps::mul(rhs, r, discr) / n)
+    }
+}
+
+impl<T: Integer + Signed + NumRef> QuadraticOps<Self, &T, Self> for QuadraticIntCoeffs<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
@@ -146,25 +197,7 @@ where
     }
     #[inline]
     fn div(self, rhs: Self, discr: &T) -> Self {
-        let (a, b) = match mod4d2(discr) {
-            0 => (
-                // (a+bw)/(c+dw) = (a+bw)*conj(c+dw)/|c+dw| = (a+bw)(c+d-dw) / |c+dw|
-                // = (ac+ad-adw+bcw+bdw-bdw^2)/|c+dw|
-                // = (ac+ad-bd*(D-1)/4)/|c+dw| + (-ad+bc)w/|c+dw|
-                &self.0 * &rhs.0 + &self.0 * &rhs.1
-                    - &self.1 * &rhs.1 * ((discr - T::one()) / four::<T>()),
-                &self.1 * &rhs.0 - &self.0 * &rhs.1,
-            ),
-            1 => (
-                // (a+bw)/(c+dw) = (a+bw)*conj(c+dw)/|c+dw| = (a+bw)(c-dw) / |c+dw|
-                // = (ac-bd*D)/|c+dw| + (bc-ad)w/|c+dw|
-                &self.0 * &rhs.0 - &self.1 * &rhs.1 * discr,
-                &self.1 * &rhs.0 - &self.0 * &rhs.1,
-            ),
-            _ => unreachable!(),
-        };
-        let n = Self::norm(rhs, discr);
-        Self(div_round(a, &n), div_round(b, &n))
+        self.div_rem(rhs, discr).0
     }
 
     #[inline]
@@ -181,16 +214,7 @@ where
     }
     #[inline]
     fn norm(self, discr: &T) -> T {
-        match mod4d2(discr) {
-            0 => {
-                // |a+bw| = (a+b/2)^2 - (b/2*sq)^2 = a^2+ab+b^2/4 - D*b^2/4 = a^2 + ab + b^2(1-D)/4
-                &self.0 * &self.0
-                    + &self.0 * &self.1
-                    + &self.1 * &self.1 * ((T::one() - discr) / four::<T>())
-            }
-            1 => &self.0 * &self.0 - &self.1 * &self.1 * discr,
-            _ => unreachable!(),
-        }
+        self.norm_ref(discr)
     }
 }
 
@@ -206,7 +230,7 @@ pub struct QuadraticInt<T> {
     discr: T, // D
 }
 
-impl<T: Signed + NumRef> QuadraticInt<T>
+impl<T: Integer + Signed + NumRef> QuadraticInt<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
@@ -527,7 +551,7 @@ where
         // TODO: add is_pure check
 
         let (lhs, rhs) = reduce_bin_op_unwrap(self, rhs);
-        Self::from_coeffs(lhs.coeffs.clone() - QuadraticOps::mul(QuadraticOps::div(lhs.coeffs, rhs.coeffs.clone(), &lhs.discr), rhs.coeffs, &lhs.discr), rhs.discr)
+        Self::from_coeffs(lhs.coeffs.div_rem(rhs.coeffs, &lhs.discr).1, rhs.discr)
     }
 }
 
@@ -584,7 +608,7 @@ mod complex {
         }
     }
 
-    impl<T: Signed + NumRef> Mul for GaussianInt<T>
+    impl<T: Integer + Signed + NumRef> Mul for GaussianInt<T>
     where
         for<'r> &'r T: RefNum<T>,
     {
@@ -595,7 +619,7 @@ mod complex {
         }
     }
 
-    impl<T: Signed + NumRef> Div for GaussianInt<T>
+    impl<T: Integer + Signed + NumRef> Div for GaussianInt<T>
     where
         for<'r> &'r T: RefNum<T>,
     {
@@ -618,31 +642,31 @@ mod tests {
     use super::*;
 
     #[test]
-    fn div_round_test() {
-        const CASES: [(i8, i8, i8); 18] = [
-            // x, y, round(x/y)
-            (-4, 4, -1),
-            (-3, 4, -1),
-            (-2, 4, 0),
-            (-1, 4, 0),
-            (0, 4, 0),
-            (1, 4, 0),
-            (2, 4, 1),
-            (3, 4, 1),
-            (4, 4, 1),
+    fn div_rem_round_test() {
+        const CASES: [(i8, i8, i8, i8); 18] = [
+            // x, y, (x/y), (x%y)
+            (-4, 4, -1, 0),
+            (-3, 4, -1, 1),
+            (-2, 4, 0, -2),
+            (-1, 4, 0, -1),
+            (0, 4, 0, 0),
+            (1, 4, 0, 1),
+            (2, 4, 1, -2),
+            (3, 4, 1, -1),
+            (4, 4, 1, 0),
 
-            (-4, -4, 1),
-            (-3, -4, 1),
-            (-2, -4, 1),
-            (-1, -4, 0),
-            (0, -4, 0),
-            (1, -4, 0),
-            (2, -4, 0),
-            (3, -4, -1),
-            (4, -4, -1),
+            (-4, -4, 1, 0),
+            (-3, -4, 1, 1),
+            (-2, -4, 1, 2),
+            (-1, -4, 0, -1),
+            (0, -4, 0, 0),
+            (1, -4, 0, 1),
+            (2, -4, 0, 2),
+            (3, -4, -1, -1),
+            (4, -4, -1, 0),
         ];
-        for (x, y, r) in CASES {
-            assert_eq!(div_round(x, &y), r, "round({} / {}) != {}", x, y, r);
+        for (x, y, q, r) in CASES {
+            assert_eq!(div_rem_round(x, &y), (q, r), "{} / {} != ({}, {})", x, y, q, r);
         }
     }
 

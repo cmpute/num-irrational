@@ -1094,7 +1094,7 @@ mod tests {
 
     #[test]
     fn cont_frac_arithmetic_test() {
-        // TODO (v0.2): add more tests to cover all cases
+        // TODO: add more tests to cover all cases
 
         let one = ContinuedFraction::one();
         let n_one = ContinuedFraction::<u32>::new(vec![1], vec![], true);
