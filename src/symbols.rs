@@ -8,7 +8,7 @@
 //! Note that to use these methods, you have to create a instance of the constant first.
 //!
 
-use crate::cont_frac::simple::InfiniteContinuedFraction;
+use crate::cont_frac::infinite::InfiniteContinuedFraction;
 use num_integer::Integer;
 use num_rational::Ratio;
 use num_traits::{FromPrimitive, Num, NumRef, One, RefNum, Signed};

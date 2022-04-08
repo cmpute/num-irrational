@@ -44,7 +44,8 @@ pub mod symbols;
 mod traits;
 
 pub use cont_frac::general::GeneralContinuedFraction;
-pub use cont_frac::simple::{ContinuedFraction, InfiniteContinuedFraction};
+pub use cont_frac::simple::ContinuedFraction;
+pub use cont_frac::infinite::InfiniteContinuedFraction;
 pub use quadratic::surd::QuadraticSurd;
 pub use quadratic::integer::QuadraticInt;
 pub use traits::*;

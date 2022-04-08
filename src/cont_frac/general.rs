@@ -1,7 +1,7 @@
 //! Implementation of general continued fractions
 
 use super::block::Block;
-use super::simple::InfiniteContinuedFraction;
+use super::infinite::InfiniteContinuedFraction;
 use crate::traits::{Approximation, Computable};
 use num_integer::Integer;
 use num_rational::Ratio;
@@ -220,7 +220,7 @@ mod tests {
     #[test]
     fn general_conf_frac_test() {
         let e = E {};
-        assert_eq!(e.cfrac::<i32>().take(10), exp(1).simplify().take(10));
+        assert_eq!(e.cfrac::<i32>().take(10), exp(1i32).simplify().take(10));
 
         let pi = Pi {};
         assert_eq!(

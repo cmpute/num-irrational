@@ -19,3 +19,4 @@
 mod block;
 pub mod general;
 pub mod simple;
+pub mod infinite;
