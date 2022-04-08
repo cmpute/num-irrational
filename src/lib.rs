@@ -3,6 +3,8 @@
 //!   - Values and continued fraction representations
 //! - [Quadratic Numbers](https://en.wikipedia.org/wiki/Algebraic_number#Examples)
 //!   - [Quadratic Irrational](https://en.wikipedia.org/wiki/Quadratic_irrational_number): [QuadraticSurd]
+//!   - [Quadratic Integer](https://en.wikipedia.org/wiki/Quadratic_integer): [QuadraticInt]
+//!   - [Gaussian Integer](https://en.wikipedia.org/wiki/Gaussian_integer): [GaussianInt]
 //! - [Continued Fraction](https://en.wikipedia.org/wiki/Continued_fraction)
 //!   - [Simple continued fraction](https://en.wikipedia.org/wiki/Continued_fraction): [ContinuedFraction], [InfiniteContinuedFraction]
 //!   - [General continued fraction](https://en.wikipedia.org/wiki/Generalized_continued_fraction): [GeneralContinuedFraction]
@@ -44,6 +46,7 @@ mod traits;
 pub use cont_frac::general::GeneralContinuedFraction;
 pub use cont_frac::simple::{ContinuedFraction, InfiniteContinuedFraction};
 pub use quadratic::surd::QuadraticSurd;
+pub use quadratic::integer::QuadraticInt;
 pub use traits::*;
 
 #[cfg(feature = "complex")]
@@ -57,3 +60,6 @@ pub type Quadratic64 = QuadraticSurd<i64>;
 #[cfg(feature = "num-bigint")]
 /// [QuadraticSurd] with big integers
 pub type BigQuadratic = QuadraticSurd<num_bigint::BigInt>;
+
+// XXX: add support for general algebraic numbers in future
+// REF: https://github.com/programmerjake/algebraics/

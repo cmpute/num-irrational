@@ -195,10 +195,16 @@ impl<T> QuadraticSurd<T> {
 
 impl<T: Integer> QuadraticSurd<T> {
     /// Determine if the surd is an (rational) integer
-    // TODO(v0.2): should we only check if it's a Gaussian integer
     #[inline]
     pub fn is_integer(&self) -> bool {
         self.coeffs.2.is_one() && self.is_rational()
+    }
+
+    /// Determine if the surd is a Gaussian integer
+    #[inline]
+    #[cfg(feature = "complex")]
+    pub fn is_gaussint(&self) -> bool {
+        self.coeffs.2.is_one()
     }
 
     /// Determine if the surd is a quadratic integer
@@ -513,7 +519,7 @@ where
     /// Converts to an integer, rounding towards zero
     ///
     /// # Panics
-    /// if the number is complex
+    /// if the number is complex when feature `complex` is not enabled
     #[inline]
     pub fn to_integer(&self) -> Approximation<T> {
         self.panic_if_complex();
@@ -522,6 +528,20 @@ where
             Approximation::Exact(self.coeffs.0.clone())
         } else {
             Approximation::Approximated(self.trunc_ref().coeffs.0)
+        }
+    }
+
+    /// Converts to an Gaussian integer, rounding towards zero
+    #[inline]
+    #[cfg(feature = "complex")]
+    pub fn to_gaussint(&self) -> Approximation<GaussianInt<T>> {
+        self.panic_if_complex();
+
+        if self.is_gaussint() {
+            Approximation::Exact(GaussianInt::new(self.coeffs.0.clone(), self.coeffs.1.clone()))
+        } else {
+            let trunc = self.trunc_ref();
+            Approximation::Approximated(GaussianInt::new(trunc.coeffs.0, trunc.coeffs.1))
         }
     }
 
@@ -1278,7 +1298,6 @@ where
         if self.discr < T::zero() {
             return None;
         }
-
         Some(
             (self.coeffs.0.to_f64()? + self.coeffs.1.to_f64()? * self.discr.to_f64()?.sqrt())
                 / self.coeffs.2.to_f64()?,
