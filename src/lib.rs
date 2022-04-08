@@ -43,24 +43,28 @@ pub mod quadratic;
 pub mod symbols;
 mod traits;
 
-pub use cont_frac::general::GeneralContinuedFraction;
-pub use cont_frac::simple::ContinuedFraction;
-pub use cont_frac::infinite::InfiniteContinuedFraction;
-pub use quadratic::surd::QuadraticSurd;
-pub use quadratic::integer::QuadraticInt;
+pub use cont_frac::{GeneralContinuedFraction, ContinuedFraction, InfiniteContinuedFraction};
+pub use quadratic::{QuadraticSurd, QuadraticInt};
 pub use traits::*;
 
 #[cfg(feature = "complex")]
-pub use quadratic::integer::GaussianInt;
+pub use quadratic::GaussianInt;
 
 /// [QuadraticSurd] with 32-bit integers
 pub type Quadratic32 = QuadraticSurd<i32>;
 /// [QuadraticSurd] with 64-bit integers
 pub type Quadratic64 = QuadraticSurd<i64>;
+/// [QuadraticInt] with 32-bit integers
+pub type QuadraticInt32 = QuadraticInt<i32>;
+/// [QuadraticInt] with 64-bit integers
+pub type QuadraticInt64 = QuadraticInt<i64>;
 
 #[cfg(feature = "num-bigint")]
 /// [QuadraticSurd] with big integers
 pub type BigQuadratic = QuadraticSurd<num_bigint::BigInt>;
+#[cfg(feature = "num-bigint")]
+/// [QuadraticInt] with big integers
+pub type BigQuadraticInt = QuadraticInt<num_bigint::BigInt>;
 
 // XXX: add support for general algebraic numbers in future
 // REF: https://github.com/programmerjake/algebraics/

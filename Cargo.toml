@@ -1,6 +1,6 @@
 [package]
 name = "num-irrational"
-version = "0.2.0"
+version = "0.3.0-alpha"
 edition = "2018"
 
 repository = "https://github.com/cmpute/num-irrational"
@@ -15,6 +15,7 @@ description = """
 [dependencies]
 num-integer = "0.1.44"
 num-traits = "0.2.14"
+futures = { version = "0.3.0", optional = true }
 
 [dependencies.num-bigint]
 optional = true
@@ -31,6 +32,7 @@ default-features = false
 
 [features]
 complex = []
+async = []
 
 [package.metadata.docs.rs]
 all-features = true

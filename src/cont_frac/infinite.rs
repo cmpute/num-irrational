@@ -1,3 +1,5 @@
+//! Implementation of infinite continued fractions
+
 use super::block::{Block, DualBlock};
 use super::simple::ContinuedFraction;
 use crate::traits::WithUnsigned;

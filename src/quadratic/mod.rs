@@ -9,8 +9,6 @@ pub trait QuadraticBase: Roots + NumRef + Clone + Signed {}
 impl<T: Roots + NumRef + Clone + Signed> QuadraticBase for T {}
 // FIXME: change to trait alias after https://github.com/rust-lang/rust/issues/41517
 
-pub mod integer;
-pub mod surd;
 use core::ops::{Add, Sub};
 
 /// This trait describes operations on quadratic field with self as the discriminant
@@ -36,3 +34,9 @@ pub trait QuadraticOps<Rhs = Self, Discr = Self, Output = Self>:
 }
 
 // TODO: create QuadraticAssignOps
+
+mod integer;
+mod surd;
+
+pub use integer::*;
+pub use surd::*;

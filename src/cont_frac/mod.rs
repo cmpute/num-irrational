@@ -2,9 +2,9 @@
 //! regular and generalized continued fraction
 //!
 //! There are three abstractions of the continued fraction
-//! 1. [ContinuedFraction][simple::ContinuedFraction] represents a simple continued fraction with limited length or periodic
-//! 2. [InfiniteContinuedFraction][simple::InfiniteContinuedFraction] represents a infinite simple continued fraction on an iterator
-//! 3. [GeneralContinuedFraction][general::GeneralContinuedFraction] is a trait that provides method to operate on a general continued fraction.
+//! 1. [ContinuedFraction][ContinuedFraction] represents a simple continued fraction with limited length or periodic
+//! 2. [InfiniteContinuedFraction][InfiniteContinuedFraction] represents a infinite simple continued fraction on an iterator
+//! 3. [GeneralContinuedFraction][GeneralContinuedFraction] is a trait that provides method to operate on a general continued fraction.
 //!
 //! # References:
 //! - <https://pi.math.cornell.edu/~gautam/ContinuedFractions.pdf>
@@ -17,6 +17,10 @@
 // TODO: support async version of InfiniteContinuedFraction
 
 mod block;
-pub mod general;
-pub mod simple;
-pub mod infinite;
+mod general;
+mod simple;
+mod infinite;
+
+pub use general::*;
+pub use simple::*;
+pub use infinite::*;

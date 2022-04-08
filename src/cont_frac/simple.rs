@@ -2,7 +2,7 @@
 
 use super::block::Block;
 use super::infinite::InfiniteContinuedFraction;
-use crate::quadratic::{QuadraticBase, surd::QuadraticSurd};
+use crate::quadratic::{QuadraticBase, QuadraticSurd};
 use crate::traits::{Approximation, Computable, WithSigned, WithUnsigned};
 use core::convert::TryFrom;
 use core::str::FromStr;

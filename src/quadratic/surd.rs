@@ -1,7 +1,7 @@
 //! Implementation of qudratic irrational numbers
 
 use super::{QuadraticBase, QuadraticOps};
-use crate::cont_frac::simple::ContinuedFraction;
+use crate::cont_frac::ContinuedFraction;
 use crate::traits::{
     Approximation, Computable, FromSqrt, FromSqrtError, SqrtErrorKind, WithSigned, WithUnsigned,
 };
