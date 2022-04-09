@@ -43,7 +43,9 @@ pub mod quadratic;
 pub mod symbols;
 mod traits;
 
+#[doc(no_inline)]
 pub use cont_frac::{GeneralContinuedFraction, ContinuedFraction, InfiniteContinuedFraction};
+#[doc(no_inline)]
 pub use quadratic::{QuadraticSurd, QuadraticInt};
 pub use traits::*;
 

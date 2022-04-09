@@ -14,7 +14,8 @@
 //! - <https://github.com/blynn/frac>
 //!
 // TODO: support the hurwitz complex continued fraction
-// TODO: support async version of InfiniteContinuedFraction
+// XXX: support async version of InfiniteContinuedFraction and GeneralContinuedFraction, after https://github.com/rust-lang/rust/issues/79024
+//      when the underlying iterator of InfiniteContinuedFraction is a async iterator, the return from all the methods should also be a async iterator
 
 mod block;
 mod general;

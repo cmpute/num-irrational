@@ -7,12 +7,15 @@ use num_integer::Integer;
 use num_traits::{Num, NumRef, RefNum};
 use std::ops::{Add, AddAssign};
 
-// TODO(vnext): move to a separate file
 /// Represents a simple continued fraction with infinite
 /// coefficients. It's a wrapper of an iterator that returns the continued fraction coefficients.
 /// Most operations of this struct will also return an iterator wrapped by this struct.
 #[derive(Clone, Copy)]
 pub struct InfiniteContinuedFraction<I: Iterator>(pub I);
+
+// TODO(v0.3): make the internal interator private, since we don't want user to change the internal state
+//             however we indeed need to provide From<InfiniteContinuedFraction<T>> for I
+// TODO(v0.3): make it possible to collect() an iterator into a InfiniteContinuedFraction
 
 impl<I: Iterator<Item = T> + Clone, T: Num + Clone> InfiniteContinuedFraction<I> {
     pub fn generalize(self) -> std::iter::Zip<I, std::iter::Repeat<T>> {

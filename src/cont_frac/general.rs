@@ -7,6 +7,9 @@ use num_integer::Integer;
 use num_rational::Ratio;
 use num_traits::{CheckedAdd, CheckedMul, FromPrimitive, Num, NumRef, RefNum, Signed, ToPrimitive};
 
+// TODO(v0.3): Change GeneralContinuedFraction to a struct
+// TODO(v0.3): make it possible to collect() an iterator into a GeneralContinuedFraction
+
 /// This trait defines utility functions for generalized continued fraction number
 /// `b_1 + a_2 / (b_2 + a_3 / (b_3 + a_4 / .. ))`. They are available for any
 /// iterator that returns a pair of number. The first value will be regarded
@@ -30,8 +33,8 @@ where
     /// The iterator will stop if the capacity of T is reached
     fn decimals(self) -> DecimalDigits<Self, T>;
 
-    // TODO: we can also implement homo and bihomo function on general continued fraction
-    //       however the result will still be an InfiniteContinuedFraction
+    // XXX: we can also implement homo and bihomo function on general continued fraction
+    //      however the result will still be an InfiniteContinuedFraction
 }
 
 /// Iterator of convergents of [GeneralContinuedFraction]

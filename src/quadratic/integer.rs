@@ -502,7 +502,7 @@ where
         if self.is_rational() {
             return rhs * self.coeffs.0;
         }
-        // TODO: add is_pure check
+        // TODO(v0.3): add is_pure check
 
         let (lhs, rhs) = reduce_bin_op_unwrap(self, rhs);
         Self::from_coeffs(QuadraticOps::mul(lhs.coeffs, rhs.coeffs, &lhs.discr), rhs.discr)
@@ -529,7 +529,7 @@ where
         if rhs.is_rational() {
             return self / rhs.coeffs.0;
         }
-        // TODO: add is_pure check
+        // TODO(v0.3): add is_pure check
 
         if self.is_rational() {
             Self::from_coeffs(QuadraticOps::div(self.coeffs, rhs.coeffs, &rhs.discr), rhs.discr)
@@ -560,7 +560,7 @@ where
         if rhs.is_rational() {
             return self / rhs.coeffs.0;
         }
-        // TODO: add is_pure check
+        // TODO(v0.3): add is_pure check
 
         let (lhs, rhs) = reduce_bin_op_unwrap(self, rhs);
         Self::from_coeffs(lhs.coeffs.div_rem(rhs.coeffs, &lhs.discr).1, rhs.discr)
@@ -675,7 +675,7 @@ mod complex {
         }
     }
 
-    // TODO: implement num_integer::Integer for GaussianInt, especially is_even and is_odd can be derived from
+    // TODO (v0.3): implement num_integer::Integer for GaussianInt, especially is_even and is_odd can be derived from
     // https://crates.io/crates/gaussiant
 }
 

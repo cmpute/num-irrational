@@ -1,11 +1,11 @@
 //! Implementation of qudratic irrational numbers
 
 use super::{QuadraticBase, QuadraticOps};
+use crate::QuadraticInt;
 use crate::cont_frac::ContinuedFraction;
 use crate::traits::{
     Approximation, Computable, FromSqrt, FromSqrtError, SqrtErrorKind, WithSigned, WithUnsigned,
 };
-#[cfg(feature = "complex")]
 use core::convert::TryFrom;
 #[cfg(feature = "complex")]
 use crate::GaussianInt;
@@ -172,6 +172,18 @@ impl<T: QuadraticBase> Div<T> for QuadraticSurdCoeffs<T> {
 /// A quadratic number represented as `(a + b*√r) / c`.
 /// If the support for complex number is enabled, then this struct can represent
 /// any quadratic integers.
+/// 
+/// # About the `complex` feature
+/// 
+/// Whether enabling the `complex` feature of the crate will lead to some behavior changes
+/// of this struct (in a compatible way), some important ones are listed below:
+/// - The [new()][QuadraticSurd::new] constructor will panic if `complex` is disabled and the given root is negative
+/// - Rounding functions ([fract()][QuadraticSurd::fract], [trunc()][QuadraticSurd::trunc], ..) will round to Gaussian
+///   integers instead of rational integers if `complex` is enabled.
+/// - Rational approximation ([approximated()][QuadraticSurd::approximated]) will panic if `complex` is enabled and
+///   the quadratic surd is complex
+/// - [QuadraticSurd::from_sqrt()] won't fail as [SqrtErrorKind::Complex] for negative input if `complex` is enabled
+/// 
 #[derive(Hash, Clone, Debug, Copy)]
 pub struct QuadraticSurd<T> {
     coeffs: QuadraticSurdCoeffs<T>, // when reduced, coeffs.1 is zero if the surd is rational, coeffs.2 is always positive
@@ -209,8 +221,8 @@ impl<T: Integer> QuadraticSurd<T> {
 
     /// Determine if the surd is a quadratic integer
     #[inline]
-    fn is_quadint(&self) -> bool {
-        unimplemented!()
+    pub fn is_quadint(&self) -> bool {
+        self.coeffs.2.is_one()
     }
 
     /// Determine if the surd is a rational number
@@ -232,6 +244,7 @@ impl<T: Integer> QuadraticSurd<T> {
         self.coeffs.0.is_zero() && !self.coeffs.1.is_zero()
     }
 
+    /// Panic when the number is complex and the feature "complex" is disabled
     #[inline(always)]
     fn panic_if_complex(&self) {
         // only need to check when we allow construction of complex surd number
@@ -454,23 +467,22 @@ where
         self.clone().conj()
     }
 
-    /// Round the surd toward zero.
+    /// Round the surd toward zero. The result will be an integer if the surd is real,
+    /// or a Gaussian integer if the surd is complex
     ///
     /// # Panics
     /// if the number is complex, when the `complex` feature is not enabled
     pub fn trunc(self) -> Self {
-        self.panic_if_complex();
+        let QuadraticSurdCoeffs(a, b, c) = self.coeffs;
+        let bsign = b.signum();
 
-        // TODO: ensure the algorithm is correct, and add tests
-        // TODO: trunc to Gaussian integer if `complex` is enabled
-        let bneg = self.coeffs.1.is_negative();
-        let br = sqrt(&self.coeffs.1 * &self.coeffs.1 * self.discr);
-        let num = if bneg {
-            self.coeffs.0 - br
+        if self.discr.is_negative() {
+            let br = bsign * sqrt(&b * &b * -self.discr);
+            Self::from_coeffs(QuadraticSurdCoeffs(a / &c, br / c, T::one()), -T::one())
         } else {
-            self.coeffs.0 + br
-        };
-        return Self::from(num / self.coeffs.2);
+            let br = bsign * sqrt(&b * &b * self.discr);
+            return Self::from((a + br) / c);
+        }
     }
 
     /// [QuadraticSurd::trunc()] with reference
@@ -482,11 +494,9 @@ where
     /// Get the fractional part of the surd, ensuring `self.trunc() + self.fract() == self`
     ///
     /// # Panics
-    /// if the number is complex, when the `complex` feature is not enabled
+    /// If the square root base is negative and not -1 (the result won't be representable by this struct)
     #[inline]
     pub fn fract(self) -> Self {
-        self.panic_if_complex();
-
         let trunc = self.trunc_ref();
         self - trunc
     }
@@ -514,7 +524,7 @@ where
         Self::from(self.coeffs.2.clone())
     }
 
-    // TODO: add ceil(), floor(), round()
+    // TODO(v0.3): add ceil(), floor(), round()
 
     /// Converts to an integer, rounding towards zero
     ///
@@ -535,13 +545,22 @@ where
     #[inline]
     #[cfg(feature = "complex")]
     pub fn to_gaussint(&self) -> Approximation<GaussianInt<T>> {
-        self.panic_if_complex();
-
         if self.is_gaussint() {
             Approximation::Exact(GaussianInt::new(self.coeffs.0.clone(), self.coeffs.1.clone()))
         } else {
             let trunc = self.trunc_ref();
             Approximation::Approximated(GaussianInt::new(trunc.coeffs.0, trunc.coeffs.1))
+        }
+    }
+
+    /// Converts to an quadratic integer, rounding towards zero
+    #[inline]
+    pub fn to_quadint(&self) -> Approximation<QuadraticInt<T>> {
+        let QuadraticSurdCoeffs(a, b, c) = &self.coeffs;
+        if self.is_quadint() {
+            Approximation::Exact(QuadraticInt::new(a.clone(), b.clone(), self.discr.clone()))
+        } else {
+            Approximation::Approximated(QuadraticInt::new(a / c, b / c, self.discr.clone()))
         }
     }
 
@@ -846,23 +865,9 @@ where
     ContinuedFraction::new(a_coeffs, p_coeffs, neg)
 }
 
-#[cfg(not(feature = "complex"))]
-impl<T: QuadraticBase + WithUnsigned<Unsigned = U> + AddAssign, U> From<QuadraticSurd<T>>
-    for ContinuedFraction<U>
-where
-    for<'r> &'r T: RefNum<T>,
-{
-    fn from(s: QuadraticSurd<T>) -> Self {
-        if s.is_negative() {
-            quadsurd_to_contfrac(-s.coeffs.0, -s.coeffs.1, s.coeffs.2, s.discr, true)
-        } else {
-            quadsurd_to_contfrac(s.coeffs.0, s.coeffs.1, s.coeffs.2, s.discr, false)
-        }
-    }
-}
-
-// TODO: convert to continued fraction based on gaussian integers if `complex` is enabled
-#[cfg(feature = "complex")]
+// Although conversion to continued fraction won't fail if complex number is disabled,
+// we have to disable From<> to make sure that adding the feature 'complex' won't result
+// in break change
 impl<T: QuadraticBase + WithUnsigned<Unsigned = U> + AddAssign, U> TryFrom<QuadraticSurd<T>>
     for ContinuedFraction<U>
 where
@@ -891,6 +896,9 @@ where
     }
 }
 
+// TODO: support convert to hurwitz continued fraction based on gaussian integers if `complex` is enabled
+//       this should be implemented as From<QuadraticSurd<T>> for HurwitzContinuedFraction (instead of TryFrom)
+
 impl<
         T: QuadraticBase + CheckedAdd + AddAssign + WithUnsigned<Unsigned = U>,
         U: Integer + Clone + CheckedAdd + CheckedMul + WithSigned<Signed = T>,
@@ -898,12 +906,6 @@ impl<
 where
     for<'r> &'r T: RefNum<T>,
 {
-    #[cfg(not(feature = "complex"))]
-    fn approximated(&self, limit: &T) -> Approximation<Ratio<T>> {
-        ContinuedFraction::<U>::from(self.clone()).approximated(limit)
-    }
-
-    #[cfg(feature = "complex")]
     fn approximated(&self, limit: &T) -> Approximation<Ratio<T>> {
         ContinuedFraction::<U>::try_from(self.clone())
             .expect("only real numbers can be approximated by a rational number")
@@ -1718,38 +1720,72 @@ mod tests {
             "(-1-2√5)/2"
         );
     }
-}
 
-#[cfg(test)]
-mod complex_tests {
-    use super::*;
-
-    #[cfg(not(feature = "complex"))]
+    #[test]
+    fn trunc_frac_test() {
+        assert_eq!(PHI.trunc_ref(), QuadraticSurd::from(1));
+        assert_eq!(PHI.fract_ref(), PHI_R);
+        assert_eq!(PHI_R.trunc_ref(), QuadraticSurd::zero());
+        assert_eq!(PHI_R.fract_ref(), PHI_R);
+        assert_eq!(N_PHI.trunc_ref(), QuadraticSurd::from(-1));
+        assert_eq!(N_PHI.fract_ref(), N_PHI_R);
+        assert_eq!(N_PHI_R.trunc_ref(), QuadraticSurd::from(0));
+        assert_eq!(N_PHI_R.fract_ref(), N_PHI_R);
+        assert_eq!(PHI_SQ.trunc_ref(), QuadraticSurd::from(2));
+        assert_eq!(PHI_SQ.fract_ref(), PHI_R);
+        assert_eq!(PHI45.trunc_ref(), QuadraticSurd::from(1));
+        assert_eq!(PHI45.fract_ref(), PHI_R);
+        assert_eq!(PHI45_R.trunc_ref(), QuadraticSurd::from(0));
+        assert_eq!(PHI45_R.fract_ref(), PHI_R);
+        assert_eq!(SQ5.trunc_ref(), QuadraticSurd::from(2));
+        assert_eq!(SQ5.fract_ref(), QuadraticSurd::new(-2, 1, 1, 5));
+        assert_eq!(N_SQ5.trunc_ref(), QuadraticSurd::from(-2));
+        assert_eq!(N_SQ5.fract_ref(), QuadraticSurd::new(2, -1, 1, 5));
+    }
+    
     #[test]
     fn from_sqrt_test() {
         assert_eq!(
             QuadraticSurd::from_sqrt(5).unwrap(),
             QuadraticSurd::new_raw(0, 1, 1, 5)
         );
-        assert_eq!(
-            QuadraticSurd::from_sqrt(-2).unwrap_err().kind,
-            SqrtErrorKind::Complex
-        );
-        assert_eq!(
-            QuadraticSurd::from_sqrt(Ratio::new(-1, 2))
-                .unwrap_err()
-                .kind,
-            SqrtErrorKind::Complex
-        );
-        assert_eq!(
-            QuadraticSurd::from_sqrt(QuadraticSurd::from(-1))
-                .unwrap_err()
-                .kind,
-            SqrtErrorKind::Complex
-        );
+        
+        #[cfg(not(feature = "complex"))]
+        {
+            assert_eq!(
+                QuadraticSurd::from_sqrt(-2).unwrap_err().kind,
+                SqrtErrorKind::Complex
+            );
+            assert_eq!(
+                QuadraticSurd::from_sqrt(Ratio::new(-1, 2))
+                    .unwrap_err()
+                    .kind,
+                SqrtErrorKind::Complex
+            );
+            assert_eq!(
+                QuadraticSurd::from_sqrt(QuadraticSurd::from(-1))
+                    .unwrap_err()
+                    .kind,
+                SqrtErrorKind::Complex
+            );
+        }
+    }
+}
+
+#[cfg(feature = "complex")]
+#[cfg(test)]
+mod complex_tests {
+    use super::*;
+
+    pub const OMEGA: QuadraticSurd<i32> = QuadraticSurd::new_raw(-1, 1, 2, -3); // -0.5 + 0.866i
+    pub const OMEGA3: QuadraticSurd<i32> = QuadraticSurd::new_raw(-3, 3, 2, -3); // -1.5 + 2.598i
+
+    #[test]
+    fn trunc_frac_test() {
+        assert_eq!(OMEGA.trunc_ref(), QuadraticSurd::zero());
+        assert_eq!(OMEGA3.trunc_ref(), QuadraticSurd::new(-1, 2, 1, -1));
     }
 
-    #[cfg(feature = "complex")]
     #[test]
     fn from_sqrt_test() {
         assert!(QuadraticSurd::from_sqrt(-2i32).is_ok());
@@ -1763,7 +1799,6 @@ mod complex_tests {
         assert_eq!(sq2i * i, QuadraticSurd::from_sqrt(2i32).unwrap());
     }
 
-    #[cfg(feature = "complex")]
     #[test]
     fn formatting_test() {
         assert_eq!(format!("{}", QuadraticSurd::<i32>::zero()), "0");
