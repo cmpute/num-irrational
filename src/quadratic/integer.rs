@@ -1,6 +1,6 @@
 //! Implementation of quadratic integers
 
-use super::{QuadraticOps, QuadraticBase};
+use super::{QuadraticBase, QuadraticOps};
 use core::ops::*;
 use num_integer::Integer;
 use num_traits::{NumRef, One, RefNum, Signed, Zero};
@@ -107,7 +107,8 @@ impl<T: Signed + NumRef> Mul<T> for QuadraticIntCoeffs<T> {
 
 impl<T: Integer + Signed + NumRef> Div<T> for QuadraticIntCoeffs<T>
 where
-    for<'r> &'r T: RefNum<T> {
+    for<'r> &'r T: RefNum<T>,
+{
     type Output = Self;
     #[inline]
     fn div(self, rhs: T) -> Self::Output {
@@ -116,14 +117,14 @@ where
 }
 impl<T: Integer + Signed + NumRef + Clone> Rem<T> for QuadraticIntCoeffs<T>
 where
-    for<'r> &'r T: RefNum<T> {
+    for<'r> &'r T: RefNum<T>,
+{
     type Output = Self;
     #[inline]
     fn rem(self, rhs: T) -> Self::Output {
         Self(div_rem_round(self.0, &rhs).1, div_rem_round(self.1, &rhs).1)
     }
 }
-
 
 impl<T: Integer + Signed + NumRef> QuadraticIntCoeffs<T>
 where
@@ -132,7 +133,7 @@ where
     /// Get the norm of the quadratic integer (taking reference)
     fn norm_ref(&self, discr: &T) -> T {
         if discr.is_zero() {
-            return &self.0 * &self.0
+            return &self.0 * &self.0;
         }
 
         match mod4d2(discr) {
@@ -207,7 +208,7 @@ where
     #[inline]
     fn conj(self, discr: &T) -> Self {
         if discr.is_zero() {
-            return self
+            return self;
         }
 
         match mod4d2(discr) {
@@ -235,7 +236,7 @@ where
 #[derive(Debug, Clone, Copy)]
 pub struct QuadraticInt<T> {
     coeffs: QuadraticIntCoeffs<T>, // (a, b), b = 0 is ensured when D = 0
-    discr: T, // D
+    discr: T,                      // D
 }
 
 impl<T: Integer + Signed + NumRef> QuadraticInt<T>
@@ -247,7 +248,10 @@ where
     /// will be extracted from r to b.
     pub fn new(a: T, b: T, r: T) -> Self {
         if b.is_zero() || r.is_zero() {
-            return Self { coeffs: QuadraticIntCoeffs(a, T::zero()), discr: T::zero() }
+            return Self {
+                coeffs: QuadraticIntCoeffs(a, T::zero()),
+                discr: T::zero(),
+            };
         }
         #[cfg(not(feature = "complex"))]
         if r.is_negative() {
@@ -311,11 +315,7 @@ where
             if &root * &root == hint {
                 // if hint is a square number, then remove the hint factor
                 // note that r ≡ r/a^2 mod 4 (given a is odd)
-                return Self::new(
-                    self.coeffs.0,
-                    self.coeffs.1 * root,
-                    quo
-                );
+                return Self::new(self.coeffs.0, self.coeffs.1 * root, quo);
             }
         }
 
@@ -326,7 +326,10 @@ where
 impl<T: Neg<Output = T>> Neg for QuadraticInt<T> {
     type Output = Self;
     fn neg(self) -> Self::Output {
-        Self{ coeffs: QuadraticIntCoeffs(-self.coeffs.0, -self.coeffs.1), discr: self.discr }
+        Self {
+            coeffs: QuadraticIntCoeffs(-self.coeffs.0, -self.coeffs.1),
+            discr: self.discr,
+        }
     }
 }
 
@@ -405,7 +408,8 @@ where
 
 impl<T: QuadraticBase> PartialEq for QuadraticInt<T>
 where
-    for<'r> &'r T: RefNum<T>, {
+    for<'r> &'r T: RefNum<T>,
+{
     fn eq(&self, other: &Self) -> bool {
         // shortcuts
         if self.discr == other.discr {
@@ -421,14 +425,15 @@ where
     }
 }
 
-impl<T: QuadraticBase> Eq for QuadraticInt<T>
-where
-    for<'r> &'r T: RefNum<T>, { }
+impl<T: QuadraticBase> Eq for QuadraticInt<T> where for<'r> &'r T: RefNum<T> {}
 
 impl<T: Add<Output = T>> Add<T> for QuadraticInt<T> {
     type Output = Self;
     fn add(self, rhs: T) -> Self::Output {
-        Self { coeffs: self.coeffs + rhs, discr: self.discr }
+        Self {
+            coeffs: self.coeffs + rhs,
+            discr: self.discr,
+        }
     }
 }
 impl<T: QuadraticBase> Add for QuadraticInt<T>
@@ -453,7 +458,10 @@ where
 impl<T: Sub<Output = T>> Sub<T> for QuadraticInt<T> {
     type Output = Self;
     fn sub(self, rhs: T) -> Self::Output {
-        Self { coeffs: self.coeffs - rhs, discr: self.discr }
+        Self {
+            coeffs: self.coeffs - rhs,
+            discr: self.discr,
+        }
     }
 }
 impl<T: QuadraticBase> Sub for QuadraticInt<T>
@@ -485,7 +493,10 @@ where
         if rhs.is_zero() {
             Self::zero()
         } else {
-            Self { coeffs: self.coeffs * rhs, discr: self.discr }
+            Self {
+                coeffs: self.coeffs * rhs,
+                discr: self.discr,
+            }
         }
     }
 }
@@ -505,7 +516,10 @@ where
         // TODO(v0.3): add is_pure check
 
         let (lhs, rhs) = reduce_bin_op_unwrap(self, rhs);
-        Self::from_coeffs(QuadraticOps::mul(lhs.coeffs, rhs.coeffs, &lhs.discr), rhs.discr)
+        Self::from_coeffs(
+            QuadraticOps::mul(lhs.coeffs, rhs.coeffs, &lhs.discr),
+            rhs.discr,
+        )
     }
 }
 
@@ -516,7 +530,10 @@ where
     type Output = Self;
     #[inline]
     fn div(self, rhs: T) -> Self::Output {
-        Self { coeffs: self.coeffs / rhs, discr: self.discr }
+        Self {
+            coeffs: self.coeffs / rhs,
+            discr: self.discr,
+        }
     }
 }
 impl<T: QuadraticBase> Div for QuadraticInt<T>
@@ -532,10 +549,16 @@ where
         // TODO(v0.3): add is_pure check
 
         if self.is_rational() {
-            Self::from_coeffs(QuadraticOps::div(self.coeffs, rhs.coeffs, &rhs.discr), rhs.discr)
+            Self::from_coeffs(
+                QuadraticOps::div(self.coeffs, rhs.coeffs, &rhs.discr),
+                rhs.discr,
+            )
         } else {
             let (lhs, rhs) = reduce_bin_op_unwrap(self, rhs);
-            Self::from_coeffs(QuadraticOps::div(lhs.coeffs, rhs.coeffs, &lhs.discr), rhs.discr)
+            Self::from_coeffs(
+                QuadraticOps::div(lhs.coeffs, rhs.coeffs, &lhs.discr),
+                rhs.discr,
+            )
         }
     }
 }
@@ -547,7 +570,10 @@ where
     type Output = Self;
     #[inline]
     fn rem(self, rhs: T) -> Self::Output {
-        Self { coeffs: self.coeffs % rhs, discr: self.discr }
+        Self {
+            coeffs: self.coeffs % rhs,
+            discr: self.discr,
+        }
     }
 }
 impl<T: QuadraticBase> Rem for QuadraticInt<T>
@@ -569,9 +595,13 @@ where
 
 impl<T: QuadraticBase> Zero for QuadraticInt<T>
 where
-    for<'r> &'r T: RefNum<T>, {
+    for<'r> &'r T: RefNum<T>,
+{
     fn zero() -> Self {
-        Self { coeffs: QuadraticIntCoeffs(T::zero(), T::zero()), discr: T::zero() }
+        Self {
+            coeffs: QuadraticIntCoeffs(T::zero(), T::zero()),
+            discr: T::zero(),
+        }
     }
 
     fn is_zero(&self) -> bool {
@@ -581,9 +611,13 @@ where
 
 impl<T: QuadraticBase> One for QuadraticInt<T>
 where
-    for<'r> &'r T: RefNum<T>, {
+    for<'r> &'r T: RefNum<T>,
+{
     fn one() -> Self {
-        Self { coeffs: QuadraticIntCoeffs(T::one(), T::zero()), discr: T::zero() }
+        Self {
+            coeffs: QuadraticIntCoeffs(T::one(), T::zero()),
+            discr: T::zero(),
+        }
     }
 }
 
@@ -610,7 +644,8 @@ mod complex {
 
     impl<T: Add<Output = T>> GaussianInt<T>
     where
-        for<'r> &'r T: RefNum<T>, {
+        for<'r> &'r T: RefNum<T>,
+    {
         pub fn norm_ref(&self) -> T {
             let QuadraticIntCoeffs(a, b) = &self.0;
             a * a + b * b
@@ -663,7 +698,7 @@ mod complex {
             Self(QuadraticOps::div(self.0, rhs.0, &-T::one()))
         }
     }
-    
+
     impl<T: Integer + Signed + NumRef> Rem for GaussianInt<T>
     where
         for<'r> &'r T: RefNum<T>,
@@ -699,7 +734,6 @@ mod tests {
             (2, 4, 1, -2),
             (3, 4, 1, -1),
             (4, 4, 1, 0),
-
             (-4, -4, 1, 0),
             (-3, -4, 1, 1),
             (-2, -4, 1, 2),
@@ -711,7 +745,15 @@ mod tests {
             (4, -4, -1, 0),
         ];
         for (x, y, q, r) in CASES {
-            assert_eq!(div_rem_round(x, &y), (q, r), "{} / {} != ({}, {})", x, y, q, r);
+            assert_eq!(
+                div_rem_round(x, &y),
+                (q, r),
+                "{} / {} != ({}, {})",
+                x,
+                y,
+                q,
+                r
+            );
         }
     }
 

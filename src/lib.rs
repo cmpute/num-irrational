@@ -44,9 +44,9 @@ pub mod symbols;
 mod traits;
 
 #[doc(no_inline)]
-pub use cont_frac::{GeneralContinuedFraction, ContinuedFraction, InfiniteContinuedFraction};
+pub use cont_frac::{ContinuedFraction, GeneralContinuedFraction, InfiniteContinuedFraction};
 #[doc(no_inline)]
-pub use quadratic::{QuadraticSurd, QuadraticInt};
+pub use quadratic::{QuadraticInt, QuadraticSurd};
 pub use traits::*;
 
 #[cfg(feature = "complex")]
