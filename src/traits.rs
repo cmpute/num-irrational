@@ -46,7 +46,7 @@ impl<T> Approximation<T> {
     }
 }
 
-// FIXME: backport into num-traits (https://github.com/rust-num/num-rational/issues/100)
+// XXX: backport into num-traits (https://github.com/rust-num/num-rational/issues/100)
 /// This trait represents a real number that is computable.
 /// See [Wiki](https://en.wikipedia.org/wiki/Computable_number)
 pub trait Computable<T> {

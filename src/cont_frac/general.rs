@@ -212,7 +212,7 @@ pub fn exp<T: Num + Signed>(target: T) -> ExpCoefficients<T> {
     }
 }
 
-// TODO: implement operators to caculate HAKMEM Constant
+// TODO: implement operators to caculate HAKMEM Constant (and add as a example)
 // https://crypto.stanford.edu/pbc/notes/contfrac/hakmem.html
 
 #[cfg(test)]

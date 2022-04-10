@@ -524,8 +524,6 @@ where
         Self::from(self.coeffs.2.clone())
     }
 
-    // TODO(v0.3): add ceil(), floor(), round()
-
     /// Converts to an integer, rounding towards zero
     ///
     /// # Panics
@@ -614,6 +612,11 @@ where
     pub fn floor_ref(&self) -> Self {
         self.clone().floor()
     }
+
+    fn ceil(self) -> Self { unimplemented!() }
+
+    /// Returns the nearest integer to a number. Round half-way cases away from zero?.
+    fn round(self) -> Self { unimplemented!() }
 
     /// Test if the surd number is positive
     ///
@@ -916,48 +919,74 @@ where
     }
 }
 
-impl<T: Integer + Signed + fmt::Display> fmt::Display for QuadraticSurd<T> {
+impl<T: Integer + Signed + fmt::Display + Clone> fmt::Display for QuadraticSurd<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let QuadraticSurdCoeffs(a, b, c) = &self.coeffs;
-        if f.alternate() && self.discr == -T::one() {
-            // print √-1 as i if alternate flag is set
+        if f.alternate() && self.discr.is_negative() {
+            // print √-1 as i, √-5 as √5i if alternate flag is set
+            // XXX: refactor using string builders
+            let r = -self.discr.clone();
             match (
                 a.is_zero(),
                 b.is_zero(),
                 b.is_one(),
                 b == &-T::one(),
                 c.is_one(),
+                r.is_one(),
             ) {
-                (true, true, _, _, _) => write!(f, "0"),
-                (true, false, true, _, true) => write!(f, "i"),
-                (true, false, true, _, false) => write!(f, "i/{}", c),
-                (true, false, false, true, true) => write!(f, "-i"),
-                (true, false, false, true, false) => write!(f, "-i/{}", c),
-                (true, false, false, false, true) => write!(f, "{}i", b),
-                (true, false, false, false, false) => write!(f, "{}i/{}", b, c),
-                (false, true, _, _, true) => write!(f, "{}", a),
-                (false, true, _, _, false) => write!(f, "{}/{}", a, c),
-                (false, false, true, _, true) => write!(f, "{}+i", a),
-                (false, false, false, true, true) => write!(f, "{}-i", a),
-                (false, false, false, false, true) => {
+                (true, true, _, _, _, _) => write!(f, "0"),
+                (true, false, true, _, true, true) => write!(f, "i"),
+                (true, false, true, _, true, false) => write!(f, "√{}i", r),
+                (true, false, true, _, false, true) => write!(f, "i/{}", c),
+                (true, false, true, _, false, false) => write!(f, "√{}i/{}", r, c),
+                (true, false, false, true, true, true) => write!(f, "-i"),
+                (true, false, false, true, true, false) => write!(f, "-√{}i", r),
+                (true, false, false, true, false, true) => write!(f, "-i/{}", c),
+                (true, false, false, true, false, false) => write!(f, "-√{}i/{}", r, c),
+                (true, false, false, false, true, true) => write!(f, "{}i", b),
+                (true, false, false, false, true, false) => write!(f, "{}√{}i", b, r),
+                (true, false, false, false, false, true) => write!(f, "{}i/{}", b, c),
+                (true, false, false, false, false, false) => write!(f, "{}√{}i/{}", b, r, c),
+                (false, true, _, _, true, _) => write!(f, "{}", a),
+                (false, true, _, _, false, _) => write!(f, "{}/{}", a, c),
+                (false, false, true, _, true, true) => write!(f, "{}+i", a),
+                (false, false, true, _, true, false) => write!(f, "{}+√{}i", a, r),
+                (false, false, false, true, true, true) => write!(f, "{}-i", a),
+                (false, false, false, true, true, false) => write!(f, "{}-√{}i", a, r),
+                (false, false, false, false, true, true) => {
                     if b.is_negative() {
                         write!(f, "{}{}i", a, b)
                     } else {
                         write!(f, "{}+{}i", a, b)
                     }
+                },
+                (false, false, false, false, true, false) => {
+                    if b.is_negative() {
+                        write!(f, "{}{}√{}i", a, b, r)
+                    } else {
+                        write!(f, "{}+{}√{}i", a, b, r)
+                    }
                 }
-                (false, false, true, _, false) => write!(f, "({}+i)/{}", a, c),
-                (false, false, false, true, false) => write!(f, "({}-i)/{}", a, c),
-                (false, false, false, false, false) => {
+                (false, false, true, _, false, true) => write!(f, "({}+i)/{}", a, c),
+                (false, false, true, _, false, false) => write!(f, "({}+√{}i)/{}", a, r, c),
+                (false, false, false, true, false, true) => write!(f, "({}-i)/{}", a, c),
+                (false, false, false, true, false, false) => write!(f, "({}-√{}i)/{}", a, r, c),
+                (false, false, false, false, false, true) => {
                     if b.is_negative() {
                         write!(f, "({}{}i)/{}", a, b, c)
                     } else {
                         write!(f, "({}+{}i)/{}", a, b, c)
                     }
+                },
+                (false, false, false, false, false, false) => {
+                    if b.is_negative() {
+                        write!(f, "({}{}√{}i)/{}", a, b, r, c)
+                    } else {
+                        write!(f, "({}+{}√{}i)/{}", a, b, r, c)
+                    }
                 }
             }
         } else {
-            // TODO: print √-5 as √5i if alternative flag is on. Implement this after refactor this function
             match (
                 a.is_zero(),
                 b.is_zero(),
@@ -1369,10 +1398,8 @@ where
             });
         }
         if target.is_integer() {
-            return Self::from_sqrt(target.to_integer()).map_err(|e| FromSqrtError {
-                data: Ratio::from(e.data),
-                kind: e.kind,
-            });
+            let (num, _) = target.into();
+            return Ok(QuadraticSurd::new(T::zero(), T::one(), T::one(), num));
         }
 
         match target.numer().checked_mul(target.denom()) {
@@ -1426,36 +1453,28 @@ where
         let y = Ratio::new(b, c);
         let x_y = x / &y;
         let delta2 = &x_y * &x_y - &target.discr;
-        if delta2.is_negative() {
-            // TODO: How to support complex quadratic surd here?
-            return Err(FromSqrtError {
-                data: QuadraticSurd::from_rationals(x_y * &y, y, Ratio::from(target.discr)),
-                kind: SqrtErrorKind::Unrepresentable,
-            });
+        #[cfg(feature = "complex")]
+        if delta2.is_negative() && &target.discr == &(-T::one()) {
+            // TODO: we can support negative root (only when discr is -1)
+            unimplemented!()
         }
 
-        // TODO: directly judge sqrt from numerator and denominator
-        let sqrt_delta = match Self::from_sqrt(delta2) {
-            Ok(sq) => sq,
-            Err(e) => {
-                return Err(FromSqrtError {
-                    data: QuadraticSurd::from_rationals(x_y * &y, y, Ratio::from(target.discr)),
-                    kind: e.kind,
-                });
-            }
-        };
-        if !sqrt_delta.is_integer() {
-            return Err(FromSqrtError {
+        let delta2 = match Self::from_sqrt(delta2).map(|sq| sq.to_integer()) {
+            Ok(Approximation::Exact(v)) => v,
+            Ok(Approximation::Approximated(_)) => return Err(FromSqrtError { // TODO: integer is not required here, (rational is)
+                // reconstruct the original target
                 data: QuadraticSurd::from_rationals(x_y * &y, y, Ratio::from(target.discr)),
                 kind: SqrtErrorKind::Unrepresentable,
-            });
-        }
-
-        let delta2 = match sqrt_delta.to_integer() {
-            Approximation::Exact(v) => v,
-            _ => unreachable!(),
+            }),
+            Err(e) => return Err(FromSqrtError {
+                // reconstruct the original target
+                data: QuadraticSurd::from_rationals(x_y * &y, y, Ratio::from(target.discr)),
+                kind: e.kind,
+            })
         };
-        let g = x_y - delta2; // XXX: shall we select another root x_y + delta2?
+
+        // from the equation above, y = 2*a_c*b_c => c = sqrt(2ab/y)
+        let g = x_y - delta2; // TODO: select the positive solution so that c^2 is positive
         let two = T::one() + T::one();
         let c2 = Ratio::from(two * g.numer() * g.denom()) / y;
         debug_assert!(c2.is_integer());
@@ -1464,6 +1483,9 @@ where
 
         let (a, b) = g.into();
         Ok(QuadraticSurd::new(a, b, c, target.discr))
+        // TODO: select the root that makes the final real part positive
+        // TODO(v0.3): finish this function add tests: (1+2i)^2 = -3+4i
+        //             use Python script to test the cases
     }
 }
 
@@ -1756,8 +1778,7 @@ mod complex_tests {
 
     #[test]
     fn formatting_test() {
-        assert_eq!(format!("{}", QuadraticSurd::<i32>::zero()), "0");
-        assert_eq!(format!("{}", QuadraticSurd::<i32>::one()), "1");
+        // test trivial complex cases
         assert_eq!(format!("{:#}", QuadraticSurd::from_sqrt(-1).unwrap()), "i");
         assert_eq!(format!("{:#}", QuadraticSurd::new(1, 1, 1, -1)), "1+i");
         assert_eq!(format!("{:#}", QuadraticSurd::new(1, -1, 1, -1)), "1-i");
@@ -1787,6 +1808,38 @@ mod complex_tests {
         assert_eq!(
             format!("{:#}", QuadraticSurd::new(-1, 2, 2, -1)),
             "(-1+2i)/2"
+        );
+
+        // test non-trivial complex cases
+        assert_eq!(format!("{:#}", QuadraticSurd::from_sqrt(-3).unwrap()), "√3i");
+        assert_eq!(format!("{:#}", QuadraticSurd::new(1, 1, 1, -3)), "1+√3i");
+        assert_eq!(format!("{:#}", QuadraticSurd::new(1, -1, 1, -3)), "1-√3i");
+        assert_eq!(format!("{:#}", QuadraticSurd::new(-1, 1, 1, -3)), "-1+√3i");
+        assert_eq!(format!("{:#}", QuadraticSurd::new(-1, -1, 1, -3)), "-1-√3i");
+        assert_eq!(format!("{:#}", QuadraticSurd::new(1, 2, 1, -3)), "1+2√3i");
+        assert_eq!(format!("{:#}", QuadraticSurd::new(1, -2, 1, -3)), "1-2√3i");
+        assert_eq!(format!("{:#}", QuadraticSurd::new(-1, 2, 1, -3)), "-1+2√3i");
+        assert_eq!(format!("{:#}", QuadraticSurd::new(-1, -2, 1, -3)), "-1-2√3i");
+        assert_eq!(format!("{:#}", QuadraticSurd::new(1, 0, 2, -3)), "1/2");
+        assert_eq!(format!("{:#}", QuadraticSurd::new(-1, 0, 2, -3)), "-1/2");
+        assert_eq!(format!("{:#}", QuadraticSurd::new(1, 1, 2, -3)), "(1+√3i)/2");
+        assert_eq!(format!("{:#}", QuadraticSurd::new(1, -1, 2, -3)), "(1-√3i)/2");
+        assert_eq!(
+            format!("{:#}", QuadraticSurd::new(-1, 1, 2, -3)),
+            "(-1+√3i)/2"
+        );
+        assert_eq!(
+            format!("{:#}", QuadraticSurd::new(-1, -1, 2, -3)),
+            "(-1-√3i)/2"
+        );
+        assert_eq!(format!("{:#}", QuadraticSurd::new(1, 2, 2, -3)), "(1+2√3i)/2");
+        assert_eq!(
+            format!("{:#}", QuadraticSurd::new(1, -2, 2, -3)),
+            "(1-2√3i)/2"
+        );
+        assert_eq!(
+            format!("{:#}", QuadraticSurd::new(-1, 2, 2, -3)),
+            "(-1+2√3i)/2"
         );
     }
 }

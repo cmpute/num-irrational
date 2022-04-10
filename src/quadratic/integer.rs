@@ -37,6 +37,7 @@ where
 }
 
 // x/y rounded to the nearest integer. If frac(x/y) = 1/2, then round up.
+// TODO(v0.3): change to round away from zero
 #[inline]
 fn div_rem_round<T: Integer + Signed + NumRef>(x: T, y: &T) -> (T, T)
 where
@@ -293,6 +294,7 @@ where
     /// Get the fundamental unit of the quadratic field ℚ[√d]
     fn unit(d: T) -> Self {
         // REF: http://www.numbertheory.org/gnubc/unit
+        // REF: https://people.reed.edu/~jerry/361/lectures/rqunits.pdf
         unimplemented!()
     }
 }
@@ -710,7 +712,7 @@ mod complex {
         }
     }
 
-    // TODO (v0.3): implement num_integer::Integer for GaussianInt, especially is_even and is_odd can be derived from
+    // TODO (v0.3.1): implement num_integer::Integer for GaussianInt, especially is_even and is_odd can be derived from
     // https://crates.io/crates/gaussiant
 }
 

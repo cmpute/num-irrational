@@ -170,9 +170,6 @@ impl<U> ContinuedFraction<U> {
                         } else {
                             debug_assert!(!a.is_zero());
                             if matches!(negative, None) {
-                                if a < T::zero() {
-                                    println!("Check1!");
-                                }
                                 negative = Some(a < T::zero());
                             }
                             dedup_a.push(a);

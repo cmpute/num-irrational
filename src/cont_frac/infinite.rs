@@ -74,7 +74,9 @@ where
     /// Take first N coefficients in the sequence and turn it into a
     /// `ContinuedFraction` object with periodic detection.
     fn take_periodic<U>(self, count: usize) -> ContinuedFraction<U> {
-        // TODO: detect re-occurence of convergents
+        // REF: https://stackoverflow.com/questions/26549373/how-to-detect-if-a-repeating-pattern-exists
+        // OPTION1: KMP string matching
+        // OPTION2: Suffix Tree
         unimplemented!()
     }
 }

@@ -11,4 +11,5 @@ This crate provides representations of irrational numbers within following categ
     - General continued fraction
     - Hurwitz continued fraction
 
-It's based on the `num` creates.
+As you can see, the support for irrational number is not limited in the real field, it also support several
+numeric types in the complex field (by enabling the `complex` feature). It's based on the `num` creates.
