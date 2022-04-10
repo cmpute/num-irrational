@@ -924,7 +924,7 @@ impl<T: Integer + Signed + fmt::Display + Clone> fmt::Display for QuadraticSurd<
         let QuadraticSurdCoeffs(a, b, c) = &self.coeffs;
         if f.alternate() && self.discr.is_negative() {
             // print √-1 as i, √-5 as √5i if alternate flag is set
-            // XXX: refactor using string builders
+            // XXX: refactor this function
             let r = -self.discr.clone();
             match (
                 a.is_zero(),
@@ -1421,6 +1421,7 @@ impl<T: QuadraticBase + CheckedMul> FromSqrt<QuadraticSurd<T>> for QuadraticSurd
 where
     for<'r> &'r T: RefNum<T>,
 {
+    /// The real part of the output is ensured to be non-negative (if successful).
     #[inline]
     fn from_sqrt(target: QuadraticSurd<T>) -> Result<Self, FromSqrtError<QuadraticSurd<T>>> {
         #[cfg(not(feature = "complex"))]
@@ -1453,39 +1454,62 @@ where
         let y = Ratio::new(b, c);
         let x_y = x / &y;
         let delta2 = &x_y * &x_y - &target.discr;
-        #[cfg(feature = "complex")]
-        if delta2.is_negative() && &target.discr == &(-T::one()) {
-            // TODO: we can support negative root (only when discr is -1)
-            unimplemented!()
+
+        // reconstruct the original target when error occurred
+        #[inline]
+        fn reconstruct<T: QuadraticBase>(x_y: Ratio<T>, y: Ratio<T>, r: T, kind: SqrtErrorKind) -> FromSqrtError<QuadraticSurd<T>> where
+        for<'r> &'r T: RefNum<T> { 
+            FromSqrtError {
+                data: QuadraticSurd::from_rationals(x_y * &y, y, Ratio::from(r)),
+                kind: kind,
+            }
         }
 
-        let delta2 = match Self::from_sqrt(delta2).map(|sq| sq.to_integer()) {
-            Ok(Approximation::Exact(v)) => v,
-            Ok(Approximation::Approximated(_)) => return Err(FromSqrtError { // TODO: integer is not required here, (rational is)
-                // reconstruct the original target
-                data: QuadraticSurd::from_rationals(x_y * &y, y, Ratio::from(target.discr)),
-                kind: SqrtErrorKind::Unrepresentable,
-            }),
-            Err(e) => return Err(FromSqrtError {
-                // reconstruct the original target
-                data: QuadraticSurd::from_rationals(x_y * &y, y, Ratio::from(target.discr)),
-                kind: e.kind,
-            })
+        if delta2.is_negative() {
+            // this branch happens only when discr is positive
+            return Err(reconstruct(x_y, y, target.discr, SqrtErrorKind::Unrepresentable));
+        }
+        let delta = match Self::from_sqrt(delta2) {
+            Ok(v) => v,
+            Err(e) => return Err(reconstruct(x_y, y, target.discr, e.kind))
+        };
+        let delta = if delta.is_rational() {
+            delta.to_rational().value()
+        } else {
+            return Err(reconstruct(x_y, y, target.discr, SqrtErrorKind::Unrepresentable))
         };
 
         // from the equation above, y = 2*a_c*b_c => c = sqrt(2ab/y)
-        let g = x_y - delta2; // TODO: select the positive solution so that c^2 is positive
-        let two = T::one() + T::one();
-        let c2 = Ratio::from(two * g.numer() * g.denom()) / y;
-        debug_assert!(c2.is_integer());
-        let c = sqrt(c2.to_integer());
-        debug_assert!(&c * &c == c2.to_integer());
+        // this function find a tuple of integers (a, b, c) that satisfies the equation, and
+        // the output a will be ensured to be non-negative
+        fn get_abc<T: QuadraticBase> (g: Ratio<T>, y: &Ratio<T>) -> Option<(T, T, T)> where
+        for<'r> &'r T: RefNum<T> {
+            let two_ab = (T::one() + T::one()) * g.numer() * g.denom();
+            let d = two_ab.gcd(y.numer());
+            let scale = y.numer() / d;
+            let c2 = two_ab * &scale * &scale * y.denom() / y.numer();
+            let (a, b) = (g.numer() * &scale, g.denom() * scale);
+            if c2.is_negative() {
+                return None;
+            }
+            let c = c2.sqrt();
+            if &c * &c != c2 {
+                None
+            } else {
+                Some((a, b, c))
+            }
+        }
 
-        let (a, b) = g.into();
-        Ok(QuadraticSurd::new(a, b, c, target.discr))
-        // TODO: select the root that makes the final real part positive
-        // TODO(v0.3): finish this function add tests: (1+2i)^2 = -3+4i
-        //             use Python script to test the cases
+        let ret = if let Some((a, b, c)) = get_abc(&x_y - &delta, &y) {
+            QuadraticSurd::new(a, b, c, target.discr)
+        } else if let Some((a, b, c)) = get_abc(&x_y + delta, &y) {
+            QuadraticSurd::new(a, b, c, target.discr)
+        } else {
+            return Err(reconstruct(x_y, y, target.discr, SqrtErrorKind::Unrepresentable))
+        };
+
+        debug_assert!(!ret.coeffs.0.is_negative());
+        Ok(ret)
     }
 }
 
@@ -1723,28 +1747,35 @@ mod tests {
     #[test]
     fn from_sqrt_test() {
         assert_eq!(
-            QuadraticSurd::from_sqrt(5).unwrap(),
+            QuadraticSurd::from_sqrt(5i32).unwrap(),
             QuadraticSurd::new_raw(0, 1, 1, 5)
+        );
+        assert_eq!(
+            QuadraticSurd::from_sqrt(QuadraticSurd::new(3i32, 2, 1, 2)).unwrap(),
+            QuadraticSurd::new_raw(1, 1, 1, 2)
         );
 
         #[cfg(not(feature = "complex"))]
         {
+            let err = QuadraticSurd::from_sqrt(-2i32).unwrap_err();
             assert_eq!(
-                QuadraticSurd::from_sqrt(-2).unwrap_err().kind,
+                err.kind,
                 SqrtErrorKind::Complex
             );
+            assert_eq!(err.data, -2);
+            let err = QuadraticSurd::from_sqrt(Ratio::new(-1i32, 2)).unwrap_err();
             assert_eq!(
-                QuadraticSurd::from_sqrt(Ratio::new(-1, 2))
-                    .unwrap_err()
-                    .kind,
+                err.kind,
                 SqrtErrorKind::Complex
             );
+            assert_eq!(err.data, Ratio::new(-1, 2));
+            let surd = QuadraticSurd::new(-2i32, 1, 1, 2);
+            let err = QuadraticSurd::from_sqrt(surd).unwrap_err();
             assert_eq!(
-                QuadraticSurd::from_sqrt(QuadraticSurd::from(-1))
-                    .unwrap_err()
-                    .kind,
+                err.kind,
                 SqrtErrorKind::Complex
             );
+            assert_eq!(err.data, surd);
         }
     }
 }
@@ -1774,6 +1805,11 @@ mod complex_tests {
         let i = QuadraticSurd::from_sqrt(QuadraticSurd::from(-1i32)).unwrap();
         assert_eq!(sqhalfi * 2, sq2i);
         assert_eq!(sq2i * i, QuadraticSurd::from_sqrt(2i32).unwrap());
+        
+        assert_eq!(
+            QuadraticSurd::from_sqrt(QuadraticSurd::new(-3i32, 4, 1, -1)).unwrap(),
+            QuadraticSurd::new_raw(1, 2, 1, -1)
+        );
     }
 
     #[test]

@@ -71,3 +71,4 @@ pub type BigQuadraticInt = QuadraticInt<num_bigint::BigInt>;
 // XXX: add support for general algebraic numbers in future
 // REF: https://github.com/programmerjake/algebraics/
 // REF: https://web.williams.edu/Mathematics/sjmiller/public_html/book/papers/vdp/BombieriPoorten_CFofAlgNumbs.pdf
+// Might need to build a complex interval arithmetic library for the purpose

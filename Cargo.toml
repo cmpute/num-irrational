@@ -4,7 +4,8 @@ version = "0.3.0-alpha"
 edition = "2018"
 
 repository = "https://github.com/cmpute/num-irrational"
-keywords = ["math", "mathematics"]
+keywords = ["math", "mathematics", "numerics", "numeric", "complex"]
+categories = ["mathematics", "algorithms"]
 license = "Apache-2.0"
 description = """
 `num-irrational` is based on `num` and extends it with support for several kinds of irrational numbers.
@@ -33,6 +34,7 @@ default-features = false
 [features]
 complex = []
 async = []
+# default = ["complex"] # TODO(v0.3): debug only
 
 [package.metadata.docs.rs]
 all-features = true
