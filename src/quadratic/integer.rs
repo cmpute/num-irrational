@@ -36,27 +36,14 @@ where
     }
 }
 
-// x/y rounded to the nearest integer. If frac(x/y) = 1/2, then round up.
-// TODO(v0.3): change to round away from zero
+// x/y rounded to the nearest integer. If frac(x/y) = 1/2, then round away from zero.
 #[inline]
 fn div_rem_round<T: Integer + Signed + NumRef>(x: T, y: &T) -> (T, T)
 where
     for<'r> &'r T: RefNum<T>,
 {
     let two = T::one() + T::one();
-    let offset = if x.is_negative() {
-        if y.is_negative() {
-            y / two
-        } else {
-            -(y - T::one()) / two
-        }
-    } else {
-        if y.is_negative() {
-            -(y + T::one()) / two
-        } else {
-            y / two
-        }
-    };
+    let offset = y.abs() / two * x.signum();
     let (q, r) = (x + &offset).div_rem(y);
     (q, r - offset)
 }
@@ -64,7 +51,11 @@ where
 /// Underlying representation of a quadratic integer `a + bω` as (a,b), where `ω` is `√D` or `(1+√D)/2`.
 ///
 /// Specifically, `ω=√D` when `D ≡ 2,3 mod 4`, and `ω=(1+√D)/2` when `D ≡ 1 mod 4`. Note that when `ω=(1+√D)/2`,
-/// `ω² = (D-1)/4 + w`
+/// `ω² = (D-1)/4 + w`.
+/// 
+/// The division of two quadratic ints is defined as: calculate a/b = x + yω in the quadratic field, then round x
+/// and y to nearest integer (round half-way cases away from zero, to be consistent with `round()` functions of
+/// primitive types).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct QuadraticIntCoeffs<T>(pub T, pub T);
 
@@ -729,7 +720,7 @@ mod tests {
             // x, y, (x/y), (x%y)
             (-4, 4, -1, 0),
             (-3, 4, -1, 1),
-            (-2, 4, 0, -2),
+            (-2, 4, -1, 2),
             (-1, 4, 0, -1),
             (0, 4, 0, 0),
             (1, 4, 0, 1),
@@ -742,7 +733,7 @@ mod tests {
             (-1, -4, 0, -1),
             (0, -4, 0, 0),
             (1, -4, 0, 1),
-            (2, -4, 0, 2),
+            (2, -4, -1, -2),
             (3, -4, -1, -1),
             (4, -4, -1, 0),
         ];
@@ -836,8 +827,8 @@ mod tests {
         assert_eq!(a + b, QuadraticInt::new(-1, 2, 2));
         assert_eq!(a - b, QuadraticInt::new(3, 4, 2));
         assert_eq!(a * b, QuadraticInt::new(-8, -7, 2));
-        assert_eq!(a / b, QuadraticInt::new(2, -2, 2));
-        assert_eq!(a % b, QuadraticInt::new(1, 1, 2));
+        assert_eq!(a / b, QuadraticInt::new(2, -3, 2));
+        assert_eq!(a % b, QuadraticInt::new(-1, -1, 2));
 
         assert_eq!(b + c, QuadraticInt::new(-3, 1, 2));
         assert_eq!(b - c, QuadraticInt::new(-1, -3, 2));
