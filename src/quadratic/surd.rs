@@ -290,16 +290,10 @@ where
             panic!("denominator is zero");
         }
 
-        // ensure b, r are zeros at the same time
-        if self.coeffs.1.is_zero() {
-            self.discr = T::zero();
-        }
-
-        // test if the surd is rational
+        // test and reduce if the surd is rational
         let root = sqrt(self.discr.abs());
         if &root * &root == self.discr {
             if self.discr.is_negative() {
-                self.coeffs.0 = T::zero();
                 self.coeffs.1 = &self.coeffs.1 * root;
                 self.discr = -T::one();
             } else {
@@ -309,21 +303,31 @@ where
             }
         }
 
-        // reduce common divisor
-        let mut g_ac = self.coeffs.0.gcd(&self.coeffs.2);
-        let g_acr = (&g_ac * &g_ac).gcd(&self.discr); // test if squared factor of c can divide r
-        let groot = sqrt(g_acr.clone());
-        if &groot * &groot == g_acr {
-            self.discr = &self.discr / &g_acr;
-            self.coeffs.0 = &self.coeffs.0 / &groot;
-            self.coeffs.2 = &self.coeffs.2 / &groot;
-            g_ac = &g_ac / groot;
-        }
+        if self.coeffs.1.is_zero() || self.discr.is_zero() {
+            // shortcut if the surd is rational
+            self.discr = T::zero();
+            self.coeffs.1 = T::zero();
 
-        let g_abc = g_ac.gcd(&self.coeffs.1);
-        self.coeffs.0 = &self.coeffs.0 / &g_abc;
-        self.coeffs.1 = &self.coeffs.1 / &g_abc;
-        self.coeffs.2 = &self.coeffs.2 / g_abc;
+            let g_ac = self.coeffs.0.gcd(&self.coeffs.2);
+            self.coeffs.0 = &self.coeffs.0 / &g_ac;
+            self.coeffs.2 = &self.coeffs.2 / g_ac;
+        } else {
+            // reduce common divisor
+            let mut g_ac = self.coeffs.0.gcd(&self.coeffs.2);
+            let g_acr = (&g_ac * &g_ac).gcd(&self.discr); // test if squared factor of c can divide r
+            let groot = sqrt(g_acr.clone());
+            if &groot * &groot == g_acr {
+                self.discr = &self.discr / &g_acr;
+                self.coeffs.0 = &self.coeffs.0 / &groot;
+                self.coeffs.2 = &self.coeffs.2 / &groot;
+                g_ac = &g_ac / groot;
+            }
+
+            let g_abc = g_ac.gcd(&self.coeffs.1);
+            self.coeffs.0 = &self.coeffs.0 / &g_abc;
+            self.coeffs.1 = &self.coeffs.1 / &g_abc;
+            self.coeffs.2 = &self.coeffs.2 / g_abc;
+        }
 
         // keep denom positive
         if self.coeffs.2 < T::zero() {
@@ -1182,7 +1186,7 @@ where
         }
         if self.is_pure() && rhs.is_pure() {
             let gcd = self.discr.gcd(&rhs.discr);
-            let discr = self.discr * rhs.discr / (&gcd * &gcd);
+            let discr = (self.discr / &gcd) * (rhs.discr / &gcd);
             return Self::new(
                 T::zero(),
                 self.coeffs.1 * rhs.coeffs.1 * gcd,
@@ -1216,12 +1220,12 @@ where
         }
         if self.is_pure() && rhs.is_pure() {
             let gcd = self.discr.gcd(&rhs.discr);
-            let discr = self.discr * &rhs.discr / (&gcd * &gcd);
+            let (ld, rd) = (self.discr / &gcd, rhs.discr / gcd);
             return Self::new(
                 T::zero(),
-                self.coeffs.1 * rhs.coeffs.2 * gcd,
-                self.coeffs.2 * rhs.coeffs.1 * rhs.discr,
-                discr,
+                self.coeffs.1 * rhs.coeffs.2,
+                self.coeffs.2 * rhs.coeffs.1 * &rd,
+                ld * rd,
             );
         }
 
@@ -1531,15 +1535,18 @@ mod tests {
     pub const N_SQ5: QuadraticSurd<i32> = QuadraticSurd::new_raw(0, -1, 1, 5);
 
     #[test]
-    fn from_rationals_test() {
-        assert_eq!(
-            QuadraticSurd::from_rationals(Ratio::new(1, 2), Ratio::new(1, 2), Ratio::from(5)),
-            PHI
-        );
-        assert_eq!(
-            QuadraticSurd::from_rationals(Ratio::new(-1, 2), Ratio::new(1, 2), Ratio::from(5)),
-            PHI_R
-        );
+    fn creation_test() {
+        let coeffs: (i32, i32, i32, i32) = QuadraticSurd::new(2, 6, 2, 5).into();
+        assert_eq!(coeffs, (1, 3, 1, 5)); // reduce common divisors
+        
+        let coeffs: (i32, i32, i32, i32) = QuadraticSurd::new(2, 1, 2, 18).into();
+        assert_eq!(coeffs, (2, 1, 2, 18)); // 18 is not trivially reducible
+
+        let coeffs: (i32, i32, i32, i32) = QuadraticSurd::new(3, 1, 3, 18).into();
+        assert_eq!(coeffs, (1, 1, 1, 2)); // 18 is reducible with the help of gcd hint
+
+        let coeffs: (i32, i32, i32, i32) = QuadraticSurd::new(3, 1, 3, 9).into();
+        assert_eq!(coeffs, (2, 0, 1, 0)); // 9 is a square number
     }
 
     #[test]
@@ -1561,6 +1568,17 @@ mod tests {
 
     #[test]
     fn from_xxx_test() {
+        // from_rationals
+        assert_eq!(
+            QuadraticSurd::from_rationals(Ratio::new(1, 2), Ratio::new(1, 2), Ratio::from(5)),
+            PHI
+        );
+        assert_eq!(
+            QuadraticSurd::from_rationals(Ratio::new(-1, 2), Ratio::new(1, 2), Ratio::from(5)),
+            PHI_R
+        );
+
+        // from_sqrt
         assert_eq!(
             QuadraticSurd::from_sqrt(5).unwrap(),
             QuadraticSurd::new_raw(0, 1, 1, 5)
@@ -1599,8 +1617,6 @@ mod tests {
         assert_eq!(PHI45_R + Ratio::one(), PHI45);
         assert_eq!(N_PHI + Ratio::one(), N_PHI_R);
         assert_eq!(PHI + PHI_R, SQ5);
-        assert_eq!(PHI45 + PHI_R, SQ5);
-        assert_eq!(PHI + PHI45_R, SQ5);
         assert_eq!(N_PHI + N_PHI_R, N_SQ5);
         assert!((PHI + N_PHI).is_zero());
         assert!((PHI + N_PHI_R).is_one());
@@ -1613,9 +1629,7 @@ mod tests {
         assert_eq!(PHI45 - Ratio::one(), PHI45_R);
         assert_eq!(N_PHI_R - Ratio::one(), N_PHI);
         assert!((PHI - PHI).is_zero());
-        assert!((PHI - PHI45).is_zero());
         assert!((PHI - PHI_R).is_one());
-        assert!((PHI - PHI45_R).is_one());
         assert!((N_PHI_R - N_PHI).is_one());
         assert_eq!(PHI - N_PHI_R, SQ5);
         assert_eq!(N_PHI - PHI_R, -SQ5);
@@ -1626,8 +1640,6 @@ mod tests {
         assert_eq!(PHI * Ratio::one(), PHI);
         assert_eq!(PHI * -Ratio::one(), N_PHI);
         assert!((PHI * PHI_R).is_one());
-        assert!((PHI45 * PHI_R).is_one());
-        assert!((PHI * PHI45_R).is_one());
         assert!((N_PHI * N_PHI_R).is_one());
         assert_eq!(PHI * PHI, PHI_SQ);
         assert_eq!(N_PHI * N_PHI, PHI_SQ);
@@ -1638,8 +1650,6 @@ mod tests {
         assert_eq!(PHI / Ratio::one(), PHI);
         assert_eq!(PHI / -Ratio::one(), N_PHI);
         assert!((PHI / PHI).is_one());
-        assert!((PHI45 / PHI).is_one());
-        assert!((PHI / PHI45).is_one());
         assert!((N_PHI / N_PHI).is_one());
         assert_eq!(PHI / PHI_R, PHI_SQ);
         assert_eq!(N_PHI / N_PHI_R, PHI_SQ);
@@ -1651,16 +1661,35 @@ mod tests {
         assert_eq!(PHI + SQ5 - PHI, SQ5);
         assert_eq!(PHI + 5 - PHI45, QuadraticSurd::from(5));
         assert_eq!(PHI + three_half - PHI45, QuadraticSurd::from(three_half));
-        assert_eq!(PHI + SQ5 - PHI45, SQ5);
         assert_eq!(PHI * 5 / PHI45, QuadraticSurd::from(5));
         assert_eq!(PHI * three_half / PHI45, QuadraticSurd::from(three_half));
-        assert_eq!(PHI * SQ5 / PHI45, SQ5);
 
         // mixed
         assert_eq!(PHI * 2 - 1, SQ5);
         assert_eq!(PHI_R * 2 + 1, SQ5);
         assert_eq!(PHI / Ratio::new(1, 2) - 1, SQ5);
         assert_eq!((PHI - Ratio::new(1, 2)) * 2, SQ5);
+    }
+
+    #[test]
+    fn arithmic_test_diff_base() {
+        assert_eq!(PHI45 + PHI_R, SQ5);
+        assert_eq!(PHI + PHI45_R, SQ5);
+        assert!((PHI - PHI45).is_zero());
+        assert!((PHI - PHI45_R).is_one());
+        assert!((PHI45 * PHI_R).is_one());
+        assert!((PHI * PHI45_R).is_one());
+        assert!((PHI45 / PHI).is_one());
+        assert!((PHI / PHI45).is_one());
+        assert_eq!(PHI + SQ5 - PHI45, SQ5);
+        assert_eq!(PHI * SQ5 / PHI45, SQ5);
+
+        let a = QuadraticSurd::new(0, 2, 3, 2);
+        let b = QuadraticSurd::new(0, 3, 4, 3);
+        let c = QuadraticSurd::new(0, 1, 2, 6);
+        assert_eq!(a * b, c);
+        assert_eq!(c / a, b);
+        assert_eq!(c / b, a);
     }
 
     #[test]

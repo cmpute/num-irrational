@@ -223,47 +223,82 @@ where
 ///
 /// The different between [QuadraticInt] and [QuadraticSurd][crate::QuadraticSurd] is that the operations for the
 /// latter will be in normal fields of real numbers or complex numbers, while the operations
-/// for the former will be in the Quadratic Field (specifically in the quadratic integer ring ℤ\[ω\])
-/// The arithmetic operations can only be performed between the integers with the same base.
+/// for the former will be in the quadratic field (specifically in the quadratic integer ring ℤ\[ω\]).
+/// Therefore, the arithmetic operations between [QuadraticInt]s can only be performed with equivalent bases (e.g. `√18=3√2` is compatible with `√2`).
+/// However for [QuadraticSurd], you can mix the number with different bases if they are both pure quadratic numbers,
+/// such as `√2 * √3 = √6`.
 #[derive(Debug, Clone, Copy)]
 pub struct QuadraticInt<T> {
     coeffs: QuadraticIntCoeffs<T>, // (a, b), b = 0 is ensured when D = 0
-    discr: T,                      // D
+    discr: T,                      // D, D mod 4 != 0 is ensured when D != 0
 }
 
-impl<T: Integer + Signed + NumRef> QuadraticInt<T>
+impl<T: QuadraticBase> QuadraticInt<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
-    /// Create a quadratic integer `a + bω`, where `ω` is `√r` or `(1+√r)/2`.
-    /// Note that r must be not divisible by 4 (to be square free), otherwise the factor 4
-    /// will be extracted from r to b.
+    /// Create a quadratic integer from `a + b√r`, where a, b, r are all integers
+    #[inline]
     pub fn new(a: T, b: T, r: T) -> Self {
+        let (mut b, mut r) = (b, r);
+
+        // remove factor 4
+        if r.is_positive() {
+            while (&r % four::<T>()).is_zero() {
+                r = r / four::<T>();
+                b = &b + &b;
+            }
+        }
+
+        match mod4d2(&r) {
+            0 => {
+                let (y, x) = (&b + &b, a - b);
+                Self::from_coeffs(QuadraticIntCoeffs(x, y), r)
+            },
+            1 => Self::from_coeffs(QuadraticIntCoeffs(a, b), r),
+            _ => unreachable!()
+        }
+    }
+    /// Create a quadratic integer `a + bω`, where `ω` is `√D` or `(1+√D)/2`.
+    /// 
+    /// # Panics
+    /// - If the discriminant is negative and feature "complex" is not enabled
+    /// - The discriminant is congruent to 0 modulo 4
+    pub fn from_coeffs(coeffs: QuadraticIntCoeffs<T>, discr: T) -> Self {
+        #[cfg(not(feature = "complex"))]
+        if discr.is_negative() {
+            panic!("Negative root is not supported without the `complex` feature");
+        }
+        if (&discr % four::<T>()).is_zero() {
+            panic!("The discriminant must not be 0 modulo 4!")
+        }
+
+        let QuadraticIntCoeffs(a, b) = coeffs;
+
+        // test if the root is a square number
+        let root = discr.abs().sqrt();
+        let (a, b, r) = if &root * &root == discr {
+            if discr.is_negative() {
+                (a, b * root, -T::one())
+            } else {
+                (a + b * root, T::zero(), T::zero())
+            }
+        } else {
+            (a, b, discr)
+        };
+
+        // shortcut for rational number
         if b.is_zero() || r.is_zero() {
             return Self {
                 coeffs: QuadraticIntCoeffs(a, T::zero()),
                 discr: T::zero(),
             };
         }
-        #[cfg(not(feature = "complex"))]
-        if r.is_negative() {
-            panic!("Negative root is not supported without the `complex` feature");
-        }
 
-        let mut b = b;
-        let mut discr = r;
-        while (&discr % four::<T>()).is_zero() {
-            discr = discr / four::<T>();
-            b = b * (T::one() + T::one());
-        }
         Self {
             coeffs: QuadraticIntCoeffs(a, b),
-            discr,
+            discr: r,
         }
-    }
-    #[inline]
-    pub fn from_coeffs(coeffs: QuadraticIntCoeffs<T>, r: T) -> Self {
-        Self::new(coeffs.0, coeffs.1, r)
     }
 
     #[inline]
@@ -281,12 +316,31 @@ where
     pub fn is_rational(&self) -> bool {
         self.coeffs.1.is_zero()
     }
+    #[inline]
+    pub fn is_pure(&self) -> bool {
+        match mod4d2(&self.discr) {
+            0 => (&self.coeffs.0 + &self.coeffs.0 + &self.coeffs.1).is_zero(),
+            1 => self.coeffs.1.is_zero(),
+            _ => unreachable!(),
+        }
+    }
 
     /// Get the fundamental unit of the quadratic field ℚ[√d]
     fn unit(d: T) -> Self {
         // REF: http://www.numbertheory.org/gnubc/unit
         // REF: https://people.reed.edu/~jerry/361/lectures/rqunits.pdf
         unimplemented!()
+    }
+    
+    /// Convert `a + bω` to `(x + y√D)/2`
+    #[inline]
+    fn parts_doubled(&self) -> (T, T) {
+        let QuadraticIntCoeffs(a, b) = &self.coeffs;
+        match mod4d2(&self.discr) {
+            0 => (a + a + b, b.clone()),
+            1 => (a + a, b + b),
+            _ => unreachable!()
+        }
     }
 }
 
@@ -303,12 +357,21 @@ where
 
         let (quo, rem) = self.discr.div_rem(&hint);
         if rem.is_zero() {
-            // if hint is actually a factor
+            // if hint is actually a factor ...
             let root = hint.clone().sqrt();
             if &root * &root == hint {
-                // if hint is a square number, then remove the hint factor
-                // note that r ≡ r/a^2 mod 4 (given a is odd)
-                return Self::new(self.coeffs.0, self.coeffs.1 * root, quo);
+                // and if hint is a square number, then remove the hint factor.
+                // note that r ≡ r/a^2 mod 4 (given a is odd), so reducing is feasible
+                return match mod4d2(&self.discr) {
+                    0 => {
+                        // ω_{a*a*r} = (1 + a√r)/2 = a(1 + √r)/2 - (a-1)/2 = a*ω_{r} - (a-1)/2
+                        let scale = (&root - T::one()) / (T::one() + T::one());
+                        Self::from_coeffs(QuadraticIntCoeffs(self.coeffs.0 - &self.coeffs.1 * scale, self.coeffs.1 * root), quo)
+                    },
+                    1 => Self::from_coeffs(QuadraticIntCoeffs(self.coeffs.0, self.coeffs.1 * root), quo),
+                    _ => unreachable!()
+                }
+                
             }
         }
 
@@ -412,9 +475,10 @@ where
             return false;
         }
 
-        let QuadraticIntCoeffs(la, lb) = &self.coeffs;
-        let QuadraticIntCoeffs(ra, rb) = &other.coeffs;
-        la == ra && lb * lb * &self.discr == rb * rb * &other.discr
+        let (la, lb) = self.parts_doubled();
+        let (ra, rb) = other.parts_doubled();
+
+        la == ra && &lb * &lb * &self.discr == &rb * &rb * &other.discr
     }
 }
 
@@ -506,7 +570,9 @@ where
         if self.is_rational() {
             return rhs * self.coeffs.0;
         }
-        // TODO(v0.3): add is_pure check
+        // XXX: currently, multiplication (and division) of pure quadratic numbers is not allowed here, because
+        // it might lead to non-representable results. For example, `ω(2) * (ω(5)-1/2) = √2 * √5/2 = √10/2`,
+        // the result is not a quadratic integer
 
         let (lhs, rhs) = reduce_bin_op_unwrap(self, rhs);
         Self::from_coeffs(
@@ -539,7 +605,6 @@ where
         if rhs.is_rational() {
             return self / rhs.coeffs.0;
         }
-        // TODO(v0.3): add is_pure check
 
         if self.is_rational() {
             Self::from_coeffs(
@@ -579,7 +644,6 @@ where
         if rhs.is_rational() {
             return self / rhs.coeffs.0;
         }
-        // TODO(v0.3): add is_pure check
 
         let (lhs, rhs) = reduce_bin_op_unwrap(self, rhs);
         Self::from_coeffs(lhs.coeffs.div_rem(rhs.coeffs, &lhs.discr).1, rhs.discr)
@@ -781,7 +845,7 @@ mod tests {
         #[cfg(feature = "complex")]
         {
             // unit complex number tests
-            let zero = QuadraticInt::new(0, 0, 2);
+            let zero = QuadraticInt::new(0, 0, -1);
             let e1 = QuadraticInt::new(1, 0, -1);
             let e2 = QuadraticInt::new(0, 1, -1);
             let e3 = QuadraticInt::new(-1, 0, -1);

@@ -16,6 +16,7 @@
 // TODO: support the hurwitz complex continued fraction
 // XXX: support async version of InfiniteContinuedFraction and GeneralContinuedFraction, after https://github.com/rust-lang/rust/issues/79024
 //      when the underlying iterator of InfiniteContinuedFraction is a async iterator, the return from all the methods should also be a async iterator
+//      some other candidates: rayon, dpc-pariter, parallel-stream
 
 mod block;
 mod general;
