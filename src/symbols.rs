@@ -8,7 +8,7 @@
 //! Note that to use these methods, you have to create a instance of the constant first.
 //!
 
-use crate::cont_frac::InfiniteContinuedFraction;
+use crate::{cont_frac::InfiniteContinuedFraction, GeneralContinuedFraction};
 use num_integer::Integer;
 use num_rational::Ratio;
 use num_traits::{FromPrimitive, Num, NumRef, One, RefNum, Signed};
@@ -37,7 +37,7 @@ impl E {
     }
 
     pub fn cfrac<T: Num + NumRef + Clone>(&self) -> InfiniteContinuedFraction<ECoefficients<T>> {
-        InfiniteContinuedFraction(ECoefficients { i: T::zero(), m: 0 })
+        ECoefficients { i: T::zero(), m: 0 }.into()
     }
 }
 
@@ -81,11 +81,11 @@ impl Pi {
     }
 
     /// pi has only generalized continued fraction representation
-    pub fn gfrac<T: Num>(&self) -> PiCoefficients<T> {
+    pub fn gfrac<T: Num + NumRef + Clone + AddAssign>(&self) -> GeneralContinuedFraction<PiCoefficients<T>> {
         PiCoefficients {
             a: T::zero(),
             b: T::zero(),
-        }
+        }.into()
     }
 }
 
@@ -128,7 +128,9 @@ impl Gamma {
     /// There is no elegant way yet to represent euler constant as a continued
     /// fraction. The formula used here will explode very fast and thus there's
     /// no practical use for it.
-    pub fn gfrac<T: Integer + Signed + Clone>(&self) -> GammaCoefficients<T> {
+    pub fn gfrac<T: Integer + Signed + NumRef + Clone + AddAssign + FromPrimitive>(&self) -> GeneralContinuedFraction<GammaCoefficients<T>> 
+    where
+        for<'r> &'r T: RefNum<T>, {
         let two = T::one() + T::one();
 
         // the initial values for d are starting from n = 2
@@ -138,7 +140,7 @@ impl Gamma {
             qm2: T::one(),
             sm1: -Ratio::one(),
             rm1: Ratio::one(),
-        }
+        }.into()
     }
 }
 
@@ -218,33 +220,32 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cont_frac::GeneralContinuedFraction;
 
     #[test]
     fn cfrac_test() {
         let e = E {};
         assert_eq!(
-            e.cfrac().0.take(10).collect::<Vec<u32>>(),
+            e.cfrac().into_iter().take(10).collect::<Vec<u32>>(),
             vec![2u32, 1, 2, 1, 1, 4, 1, 1, 6, 1]
         );
 
         let pi = Pi {};
         assert_eq!(
-            pi.gfrac().take(5).collect::<Vec<(u32, u32)>>(),
+            pi.gfrac().into_iter().take(5).collect::<Vec<(u32, u32)>>(),
             vec![(1, 0), (4, 1), (1, 3), (4, 5), (9, 7)]
         );
         assert_eq!(
-            pi.gfrac().simplify().0.take(10).collect::<Vec<u64>>(),
+            pi.gfrac().simplify().into_iter().take(10).collect::<Vec<u64>>(),
             vec![3, 7, 15, 1, 292, 1, 1, 1, 2, 1]
         );
 
         let gamma = Gamma {};
         assert_eq!(
-            gamma.gfrac().take(6).collect::<Vec<(i32, i32)>>(),
+            gamma.gfrac().into_iter().take(6).collect::<Vec<(i32, i32)>>(),
             vec![(1, 0), (1, 2), (-1, 4), (-5, 16), (36, 59), (-15740, 404)]
         );
         assert_eq!(
-            gamma.gfrac().simplify().0.take(8).collect::<Vec<i64>>(),
+            gamma.gfrac().simplify().into_iter().take(8).collect::<Vec<i64>>(),
             vec![0, 1, 1, 2, 1, 2, 1, 3]
         ); // [0;1,1,2,1,2,1,3,1,-4,-1,0,..]
     }

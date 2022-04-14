@@ -382,7 +382,7 @@ impl<T> ContinuedFraction<T> {
 impl<T: WithSigned<Signed = U> + Clone, U: Signed> ContinuedFraction<T> {
     /// Wrap the continued fraction object as `InfiniteContinuedFraction`
     pub fn expanded(&self) -> InfiniteContinuedFraction<SignedCoefficients<Coefficients<T>>> {
-        InfiniteContinuedFraction(self.coeffs_signed())
+        self.coeffs_signed().into()
     }
 }
 

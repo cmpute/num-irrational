@@ -59,6 +59,12 @@ where
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct QuadraticIntCoeffs<T>(pub T, pub T);
 
+impl<T> From<(T, T)> for QuadraticIntCoeffs<T> {
+    fn from(v: (T, T)) -> Self {
+        Self(v.0, v.1)
+    }
+}
+
 impl<T: Add<Output = T>> Add<T> for QuadraticIntCoeffs<T> {
     type Output = Self;
     #[inline]
@@ -225,7 +231,7 @@ where
 /// latter will be in normal fields of real numbers or complex numbers, while the operations
 /// for the former will be in the quadratic field (specifically in the quadratic integer ring ℤ\[ω\]).
 /// Therefore, the arithmetic operations between [QuadraticInt]s can only be performed with equivalent bases (e.g. `√18=3√2` is compatible with `√2`).
-/// However for [QuadraticSurd], you can mix the number with different bases if they are both pure quadratic numbers,
+/// However for [QuadraticSurd][crate::QuadraticSurd], you can mix the number with different bases if they are both pure quadratic numbers,
 /// such as `√2 * √3 = √6`.
 #[derive(Debug, Clone, Copy)]
 pub struct QuadraticInt<T> {
@@ -949,18 +955,18 @@ mod tests {
     #[cfg(feature = "complex")]
     fn test_eisenstein() {
         // test Eisenstein integers
-        let q12 = QuadraticInt::new(1, 2, -3);
-        let qm12 = QuadraticInt::new(-1, 2, -3);
-        let q3m2 = QuadraticInt::new(3, -2, -3);
-        let q23 = QuadraticInt::new(2, 3, -3);
-        let qm23 = QuadraticInt::new(-2, 3, -3);
-        let q5m3 = QuadraticInt::new(5, -3, -3);
+        let q12 =  QuadraticInt::from_coeffs((1, 2).into(), -3); // 2 + √-3
+        let qm12 = QuadraticInt::from_coeffs((-1, 2).into(), -3); // √-3
+        let q3m2 = QuadraticInt::from_coeffs((3, -2).into(), -3); // 2 - √-3
+        let q23 =  QuadraticInt::from_coeffs((2, 3).into(), -3);
+        let qm23 = QuadraticInt::from_coeffs((-2, 3).into(), -3);
+        let q5m3 = QuadraticInt::from_coeffs((5, -3).into(), -3);
 
         assert_eq!(q12.conj(), q3m2);
         assert_eq!(q23.conj(), q5m3);
         assert_eq!(q12.norm(), 7);
         assert_eq!(q23.norm(), 19);
-        assert_eq!(q12 * q12, QuadraticInt::new(-3, 8, -3));
+        assert_eq!(q12 * q12, QuadraticInt::from_coeffs((-3, 8).into(), -3));
 
         for &v1 in &[q12, qm12, q3m2, q23, qm23, q5m3] {
             for &v2 in &[q12, qm12, q3m2, q23, qm23, q5m3] {

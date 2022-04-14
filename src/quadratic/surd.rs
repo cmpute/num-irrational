@@ -26,6 +26,12 @@ use num_rational::Ratio;
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct QuadraticSurdCoeffs<T>(pub T, pub T, pub T);
 
+impl<T> From<(T, T, T)> for QuadraticSurdCoeffs<T> {
+    fn from(v: (T, T, T)) -> Self {
+        Self(v.0, v.1, v.2)
+    }
+}
+
 impl<T: QuadraticBase> Add for QuadraticSurdCoeffs<T>
 where
     for<'r> &'r T: RefNum<T>,

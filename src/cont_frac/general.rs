@@ -7,35 +7,87 @@ use num_integer::Integer;
 use num_rational::Ratio;
 use num_traits::{CheckedAdd, CheckedMul, FromPrimitive, Num, NumRef, RefNum, Signed, ToPrimitive};
 
-// TODO(v0.3): Change GeneralContinuedFraction to a struct
-// TODO(v0.3): make it possible to collect() an iterator into a GeneralContinuedFraction
+/// This struct defines utility functions for generalized continued fraction number
+/// `b_1 + a_2 / (b_2 + a_3 / (b_3 + a_4 / .. ))`.
+/// 
+/// It can be converted from any iterator that returns a pair of number (by using [from()][GeneralContinuedFraction::from]).
+/// The first value will be regarded as a_k while the second value as b_k. You need to make
+/// sure that a_1 = 1.
+/// 
+#[derive(Clone, Copy)]
+pub struct GeneralContinuedFraction<I>(I);
 
-/// This trait defines utility functions for generalized continued fraction number
-/// `b_1 + a_2 / (b_2 + a_3 / (b_3 + a_4 / .. ))`. They are available for any
-/// iterator that returns a pair of number. The first value will be regarded
-/// as a_k while the second value as b_k. You need to make sure that a_1 = 1.
-pub trait GeneralContinuedFraction<T: Integer + NumRef>: Iterator<Item = (T, T)>
+impl<I: Iterator> From<I> for GeneralContinuedFraction<I> {
+    fn from(iter: I) -> Self {
+        Self(iter)
+    }
+}
+impl<I: Iterator<Item = (T, T)>, T> IntoIterator for GeneralContinuedFraction<I> {
+    type Item = (T, T);
+    type IntoIter = I;    
+    fn into_iter(self) -> Self::IntoIter {
+        self.0
+    }
+}
+
+impl<I: Iterator<Item = (T, T)>, T: Integer + NumRef> GeneralContinuedFraction<I>
 where
     for<'r> &'r T: RefNum<T>,
 {
     /// Compute the convergents of the generalized continued fraction
-    fn convergents(self) -> Convergents<Self, T>;
+    pub fn convergents(self) -> Convergents<I, T> {
+        Convergents {
+            block: Block::identity(),
+            g_coeffs: self.0,
+        }
+    }
 
     /// Simplify the generalized continued fraction to an `InfiniteContinuedFraction`
     /// Note that usually this function will generate a simple continued fraction with most
     /// coefficients being positive. If you want to ensure the positiveness, you can either
     /// call collect() on `InfiniteContinuedFraction`, or call simplify() again.
-    fn simplify(self) -> InfiniteContinuedFraction<Simplified<Self, T>>
-    where
-        Self: Sized;
+    pub fn simplify(self) -> InfiniteContinuedFraction<Simplified<I, T>> {
+        Simplified {
+            block: Block::identity(),
+            g_coeffs: self.0,
+        }.into()
+    }
 
     /// Retrieve the decimal representation of the number, as an iterator of digits.
     /// The iterator will stop if the capacity of T is reached
-    fn decimals(self) -> DecimalDigits<Self, T>;
+    pub fn decimals(self) -> DecimalDigits<I, T> {
+        DecimalDigits {
+            block: Block::identity(),
+            g_coeffs: self.0,
+        }
+    }
 
     // XXX: we can also implement homo and bihomo function on general continued fraction
     //      however the result will still be an InfiniteContinuedFraction
 }
+
+// pub trait GeneralContinuedFraction<T: Integer + NumRef>: Iterator<Item = (T, T)>
+// where
+//     for<'r> &'r T: RefNum<T>,
+// {
+//     /// Compute the convergents of the generalized continued fraction
+//     fn convergents(self) -> Convergents<Self, T>;
+
+//     /// Simplify the generalized continued fraction to an `InfiniteContinuedFraction`
+//     /// Note that usually this function will generate a simple continued fraction with most
+//     /// coefficients being positive. If you want to ensure the positiveness, you can either
+//     /// call collect() on `InfiniteContinuedFraction`, or call simplify() again.
+//     fn simplify(self) -> InfiniteContinuedFraction<Simplified<Self, T>>
+//     where
+//         Self: Sized;
+
+//     /// Retrieve the decimal representation of the number, as an iterator of digits.
+//     /// The iterator will stop if the capacity of T is reached
+//     fn decimals(self) -> DecimalDigits<Self, T>;
+
+//     // XXX: we can also implement homo and bihomo function on general continued fraction
+//     //      however the result will still be an InfiniteContinuedFraction
+// }
 
 /// Iterator of convergents of [GeneralContinuedFraction]
 #[derive(Debug, Clone)]
@@ -119,34 +171,8 @@ where
     }
 }
 
-impl<I: Iterator<Item = (T, T)>, T: Integer + NumRef> GeneralContinuedFraction<T> for I
-where
-    for<'r> &'r T: RefNum<T>,
-{
-    fn convergents(self) -> Convergents<I, T> {
-        Convergents {
-            block: Block::identity(),
-            g_coeffs: self,
-        }
-    }
-
-    fn simplify(self) -> InfiniteContinuedFraction<Simplified<Self, T>> {
-        InfiniteContinuedFraction(Simplified {
-            block: Block::identity(),
-            g_coeffs: self,
-        })
-    }
-
-    fn decimals(self) -> DecimalDigits<Self, T> {
-        DecimalDigits {
-            block: Block::identity(),
-            g_coeffs: self,
-        }
-    }
-}
-
 impl<I: Iterator<Item = (T, T)> + Clone, T: Integer + NumRef + Clone + CheckedAdd + CheckedMul>
-    Computable<T> for I
+    Computable<T> for GeneralContinuedFraction<I>
 where
     for<'r> &'r T: RefNum<T>,
 {
@@ -205,11 +231,14 @@ where
     }
 }
 
-pub fn exp<T: Num + Signed>(target: T) -> ExpCoefficients<T> {
+pub fn exp<T: Num + NumRef + Clone + Signed>(target: T) -> GeneralContinuedFraction<ExpCoefficients<T>>
+where
+    for<'r> &'r T: RefNum<T>,
+{
     ExpCoefficients {
         exponent: target,
         i: T::zero(),
-    }
+    }.into()
 }
 
 // TODO: implement operators to caculate HAKMEM Constant (and add as a example)
@@ -236,7 +265,7 @@ mod tests {
             vec![(4, 1), (3, 1), (19, 6), (160, 51), (1744, 555)]
         );
         assert_eq!(
-            pi.gfrac().simplify().0.take(6).collect::<Vec<u64>>(),
+            pi.gfrac().simplify().into_iter().take(6).collect::<Vec<u64>>(),
             vec![3, 7, 15, 1, 292, 1]
         );
         assert_eq!(
@@ -248,8 +277,8 @@ mod tests {
     #[test]
     fn functions_test() {
         assert_eq!(
-            exp(1).take(5).collect::<Vec<_>>(),
-            vec![(1, 1), (1, 1), (-1, 3), (-2, 4), (-3, 5)]
+            exp(1i32).into_iter().take(5).collect::<Vec<_>>(),
+            vec![(1i32, 1), (1, 1), (-1, 3), (-2, 4), (-3, 5)]
         )
     }
 }
