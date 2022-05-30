@@ -72,3 +72,4 @@ pub type BigQuadraticInt = QuadraticInt<num_bigint::BigInt>;
 // REF: https://github.com/programmerjake/algebraics/
 // REF: https://web.williams.edu/Mathematics/sjmiller/public_html/book/papers/vdp/BombieriPoorten_CFofAlgNumbs.pdf
 // Might need to build a complex interval arithmetic library for the purpose
+// And it's better no to use generics, it can be based on ibig::Uint

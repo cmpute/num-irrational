@@ -853,26 +853,30 @@ where
         q = &q * &q;
     }
 
+    /// Reduction operator for binary quadratic forms
+    #[inline]
+    fn rho<T: QuadraticBase> (d: &T, rd: &T, p: &mut T, q: &mut T) -> T where
+        for<'r> &'r T: RefNum<T>,{
+        let a = (rd + &*p).div_floor(&q);
+        *p = &a * &*q - &*p;
+        *q = (d - &*p * &*p) / &*q; // this step should be exact division
+        a
+    }
+
     // find the reduced form and aperiodic coefficients
     let mut a_coeffs: Vec<T> = Vec::new();
     let rd = d.sqrt();
     while a_coeffs.len() == 0 || // ensure that we have a first coefficient
           !(p <= rd && rd < (&p+&q) && (&q-&p) <= rd)
     {
-        let a = (&rd + &p).div_floor(&q);
-        p = &a * &q - p;
-        q = (&d - &p * &p) / q;
-        a_coeffs.push(a);
+        a_coeffs.push(rho(&d, &rd, &mut p, &mut q));
     }
 
     // find the periodic coefficients
     let mut p_coeffs: Vec<T> = Vec::new();
     let (init_p, init_q) = (p.clone(), q.clone());
     loop {
-        let a = (&rd + &p).div_floor(&q);
-        p = &a * &q - p;
-        q = (&d - &p * &p) / q;
-        p_coeffs.push(a);
+        p_coeffs.push(rho(&d, &rd, &mut p, &mut q));
         if p == init_p && q == init_q {
             break;
         }
