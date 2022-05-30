@@ -1,7 +1,6 @@
 //! Implementation of general continued fractions
 
 use super::block::Block;
-use super::infinite::InfiniteContinuedFraction;
 use crate::traits::{Approximation, Computable};
 use num_integer::Integer;
 use num_rational::Ratio;
@@ -10,35 +9,18 @@ use num_traits::{CheckedAdd, CheckedMul, FromPrimitive, Num, NumRef, RefNum, Sig
 /// This struct defines utility functions for generalized continued fraction number
 /// `b_1 + a_2 / (b_2 + a_3 / (b_3 + a_4 / .. ))`.
 /// 
-/// It can be converted from any iterator that returns a pair of number (by using [from()][GeneralContinuedFraction::from]).
-/// The first value will be regarded as a_k while the second value as b_k. You need to make
-/// sure that a_1 = 1.
+/// It can be converted from any iterator that returns a pair of number (a_k, b_k).
+/// You need to make sure that a_1 = 1.
 /// 
-#[derive(Clone, Copy)]
-pub struct GeneralContinuedFraction<I>(I);
-
-impl<I: Iterator> From<I> for GeneralContinuedFraction<I> {
-    fn from(iter: I) -> Self {
-        Self(iter)
-    }
-}
-impl<I: Iterator<Item = (T, T)>, T> IntoIterator for GeneralContinuedFraction<I> {
-    type Item = (T, T);
-    type IntoIter = I;    
-    fn into_iter(self) -> Self::IntoIter {
-        self.0
-    }
-}
-
-impl<I: Iterator<Item = (T, T)>, T: Integer + NumRef> GeneralContinuedFraction<I>
+pub trait GeneralContinuedFraction<T: Integer + NumRef>: Iterator<Item = (T, T)>
 where
     for<'r> &'r T: RefNum<T>,
 {
     /// Compute the convergents of the generalized continued fraction
-    pub fn convergents(self) -> Convergents<I, T> {
+    fn convergents(self) -> Convergents<Self, T> where Self: Sized {
         Convergents {
             block: Block::identity(),
-            g_coeffs: self.0,
+            g_coeffs: self,
         }
     }
 
@@ -46,48 +28,26 @@ where
     /// Note that usually this function will generate a simple continued fraction with most
     /// coefficients being positive. If you want to ensure the positiveness, you can either
     /// call collect() on `InfiniteContinuedFraction`, or call simplify() again.
-    pub fn simplify(self) -> InfiniteContinuedFraction<Simplified<I, T>> {
+    fn simplify(self) -> Simplified<Self, T> where Self: Sized {
         Simplified {
             block: Block::identity(),
-            g_coeffs: self.0,
+            g_coeffs: self,
         }.into()
     }
 
     /// Retrieve the decimal representation of the number, as an iterator of digits.
     /// The iterator will stop if the capacity of T is reached
-    pub fn decimals(self) -> DecimalDigits<I, T> {
+    fn decimals(self) -> DecimalDigits<Self, T> where Self: Sized {
         DecimalDigits {
             block: Block::identity(),
-            g_coeffs: self.0,
+            g_coeffs: self,
         }
     }
 
     // XXX: we can also implement homo and bihomo function on general continued fraction
     //      however the result will still be an InfiniteContinuedFraction
 }
-
-// pub trait GeneralContinuedFraction<T: Integer + NumRef>: Iterator<Item = (T, T)>
-// where
-//     for<'r> &'r T: RefNum<T>,
-// {
-//     /// Compute the convergents of the generalized continued fraction
-//     fn convergents(self) -> Convergents<Self, T>;
-
-//     /// Simplify the generalized continued fraction to an `InfiniteContinuedFraction`
-//     /// Note that usually this function will generate a simple continued fraction with most
-//     /// coefficients being positive. If you want to ensure the positiveness, you can either
-//     /// call collect() on `InfiniteContinuedFraction`, or call simplify() again.
-//     fn simplify(self) -> InfiniteContinuedFraction<Simplified<Self, T>>
-//     where
-//         Self: Sized;
-
-//     /// Retrieve the decimal representation of the number, as an iterator of digits.
-//     /// The iterator will stop if the capacity of T is reached
-//     fn decimals(self) -> DecimalDigits<Self, T>;
-
-//     // XXX: we can also implement homo and bihomo function on general continued fraction
-//     //      however the result will still be an InfiniteContinuedFraction
-// }
+impl<I, T> GeneralContinuedFraction<T> for I where I: Iterator<Item = (T, T)>, T: Integer + NumRef, for<'r> &'r T: RefNum<T>, {}
 
 /// Iterator of convergents of [GeneralContinuedFraction]
 #[derive(Debug, Clone)]
@@ -172,7 +132,7 @@ where
 }
 
 impl<I: Iterator<Item = (T, T)> + Clone, T: Integer + NumRef + Clone + CheckedAdd + CheckedMul>
-    Computable<T> for GeneralContinuedFraction<I>
+    Computable<T> for I
 where
     for<'r> &'r T: RefNum<T>,
 {
@@ -231,14 +191,14 @@ where
     }
 }
 
-pub fn exp<T: Num + NumRef + Clone + Signed>(target: T) -> GeneralContinuedFraction<ExpCoefficients<T>>
+pub fn exp<T: Num + NumRef + Clone + Signed>(target: T) -> ExpCoefficients<T>
 where
     for<'r> &'r T: RefNum<T>,
 {
     ExpCoefficients {
         exponent: target,
         i: T::zero(),
-    }.into()
+    }
 }
 
 // TODO: implement operators to caculate HAKMEM Constant (and add as a example)
@@ -252,7 +212,7 @@ mod tests {
     #[test]
     fn general_conf_frac_test() {
         let e = E {};
-        assert_eq!(e.cfrac::<i32>().take(10), exp(1i32).simplify().take(10));
+        assert_eq!(e.cfrac::<i32>().take(10).collect::<Vec<_>>(), exp(1i32).simplify().take(10).collect::<Vec<_>>());
 
         let pi = Pi {};
         assert_eq!(

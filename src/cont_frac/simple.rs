@@ -1,11 +1,11 @@
 //! Implementation of simple continued fractions
 
 use super::block::Block;
-use super::infinite::InfiniteContinuedFraction;
 use crate::quadratic::{QuadraticBase, QuadraticSurd};
 use crate::traits::{Approximation, Computable, WithSigned, WithUnsigned};
 use core::convert::TryFrom;
 use core::str::FromStr;
+use std::iter::FromIterator;
 use num_integer::Integer;
 use num_rational::Ratio;
 use num_traits::{CheckedAdd, CheckedMul, Num, NumRef, One, RefNum, Signed, Zero};
@@ -226,6 +226,13 @@ impl<U> ContinuedFraction<U> {
     }
 }
 
+impl<T, U> FromIterator<T> for ContinuedFraction<U> where T: Num + PartialOrd + AddAssign + WithUnsigned<Unsigned = U> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        // TODO(v0.4): move the logic of normalizing the coefficients to this function, and for periodic part, use QuadraticSurd to calculate
+        ContinuedFraction::new(iter.into_iter().collect(), Vec::new(), false)
+    }
+}
+
 /// Iterator of coeffcients in a [ContinuedFraction]
 #[derive(Debug, Clone)]
 pub struct Coefficients<'a, T> {
@@ -338,7 +345,7 @@ pub struct SignedCoefficients<T> {
 impl<'r, I: Iterator<Item = &'r T>, T: 'r + WithSigned<Signed = U> + Clone, U: Signed> Iterator
     for SignedCoefficients<I>
 {
-    type Item = U;
+    type Item = <T as WithSigned>::Signed;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.negative {
@@ -376,13 +383,6 @@ impl<T> ContinuedFraction<T> {
             coeffs: self.coeffs(),
             negative: self.negative,
         }
-    }
-}
-
-impl<T: WithSigned<Signed = U> + Clone, U: Signed> ContinuedFraction<T> {
-    /// Wrap the continued fraction object as `InfiniteContinuedFraction`
-    pub fn expanded(&self) -> InfiniteContinuedFraction<SignedCoefficients<Coefficients<T>>> {
-        self.coeffs_signed().into()
     }
 }
 

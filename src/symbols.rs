@@ -8,7 +8,7 @@
 //! Note that to use these methods, you have to create a instance of the constant first.
 //!
 
-use crate::{cont_frac::InfiniteContinuedFraction, GeneralContinuedFraction};
+use crate::{GeneralContinuedFraction};
 use num_integer::Integer;
 use num_rational::Ratio;
 use num_traits::{FromPrimitive, Num, NumRef, One, RefNum, Signed};
@@ -36,8 +36,8 @@ impl E {
         2.71828182845904523536028747
     }
 
-    pub fn cfrac<T: Num + NumRef + Clone>(&self) -> InfiniteContinuedFraction<ECoefficients<T>> {
-        ECoefficients { i: T::zero(), m: 0 }.into()
+    pub fn cfrac<T: Num + NumRef + Clone>(&self) -> ECoefficients<T> {
+        ECoefficients { i: T::zero(), m: 0 }
     }
 }
 
@@ -81,7 +81,7 @@ impl Pi {
     }
 
     /// pi has only generalized continued fraction representation
-    pub fn gfrac<T: Num + NumRef + Clone + AddAssign>(&self) -> GeneralContinuedFraction<PiCoefficients<T>> {
+    pub fn gfrac<T: Num + NumRef + Clone + AddAssign>(&self) -> PiCoefficients<T> {
         PiCoefficients {
             a: T::zero(),
             b: T::zero(),
@@ -128,7 +128,7 @@ impl Gamma {
     /// There is no elegant way yet to represent euler constant as a continued
     /// fraction. The formula used here will explode very fast and thus there's
     /// no practical use for it.
-    pub fn gfrac<T: Integer + Signed + NumRef + Clone + AddAssign + FromPrimitive>(&self) -> GeneralContinuedFraction<GammaCoefficients<T>> 
+    pub fn gfrac<T: Integer + Signed + NumRef + Clone + AddAssign + FromPrimitive>(&self) -> GammaCoefficients<T>
     where
         for<'r> &'r T: RefNum<T>, {
         let two = T::one() + T::one();
