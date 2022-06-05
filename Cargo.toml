@@ -16,6 +16,7 @@ description = """
 [dependencies]
 num-integer = "0.1.44"
 num-traits = "0.2.14"
+dyn-clone = "1.0.4"
 
 [dependencies.num-bigint]
 optional = true

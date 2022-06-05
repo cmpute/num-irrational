@@ -60,7 +60,7 @@ impl<U> ContinuedFraction<U> {
     /// This function will make sure that if two numbers are equal,
     /// their internal representation in continued fraction will be the same
     pub fn new<T: Num + PartialOrd + AddAssign + WithUnsigned<Unsigned = U>>(
-        a_coeffs: Vec<T>,
+        a_coeffs: Vec<T>, // FIXME: accept slice? or accept IntoIter?
         p_coeffs: Vec<T>,
         negate: bool,
     ) -> Self {
@@ -209,6 +209,7 @@ impl<U> ContinuedFraction<U> {
         if matches!(negative, None) {
             if matches!(p_coeffs.first(), Some(p) if p <= &T::zero()) {
                 // TODO: how to handle negative coefficients in the periodic parts
+                // if no efficient way is found, we can delegate this part to quadratic surd.
                 unimplemented!()
             } else {
                 negative = Some(negate);
@@ -228,7 +229,6 @@ impl<U> ContinuedFraction<U> {
 
 impl<T, U> FromIterator<T> for ContinuedFraction<U> where T: Num + PartialOrd + AddAssign + WithUnsigned<Unsigned = U> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
-        // TODO(v0.4): move the logic of normalizing the coefficients to this function, and for periodic part, use QuadraticSurd to calculate
         ContinuedFraction::new(iter.into_iter().collect(), Vec::new(), false)
     }
 }
@@ -278,6 +278,7 @@ impl<'a, T> Iterator for Coefficients<'a, T> {
             }
         }
     }
+    // TODO(v0.4): implement size_hint for all iterators in this crate
 }
 
 /// Iterator that converts coefficients of simple continued fraction to
@@ -285,7 +286,7 @@ impl<'a, T> Iterator for Coefficients<'a, T> {
 /// [GeneralContinuedFraction][crate::GeneralContinuedFraction]
 pub struct GeneralCoefficients<T> {
     coeffs: T,
-    negative: bool, // store the sign
+    neg: bool, // store the sign
 }
 
 impl<'r, I: Iterator<Item = &'r T>, T: 'r + WithSigned<Signed = U> + Clone, U: Signed> Iterator
@@ -294,7 +295,7 @@ impl<'r, I: Iterator<Item = &'r T>, T: 'r + WithSigned<Signed = U> + Clone, U: S
     type Item = (U, U);
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.negative {
+        if self.neg {
             self.coeffs
                 .next()
                 .map(|v| (U::one(), -v.clone().to_signed()))
@@ -337,9 +338,10 @@ impl<
 
 /// Iterator of coefficients in a [ContinuedFraction] with sign applied. This iterator
 /// can be used to construct a [InfiniteContinuedFraction]
+#[derive(Debug, Clone)]
 pub struct SignedCoefficients<T> {
     coeffs: T,
-    negative: bool, // store the sign
+    neg: bool, // store the sign
 }
 
 impl<'r, I: Iterator<Item = &'r T>, T: 'r + WithSigned<Signed = U> + Clone, U: Signed> Iterator
@@ -348,7 +350,7 @@ impl<'r, I: Iterator<Item = &'r T>, T: 'r + WithSigned<Signed = U> + Clone, U: S
     type Item = <T as WithSigned>::Signed;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.negative {
+        if self.neg {
             self.coeffs.next().map(|v| -v.clone().to_signed())
         } else {
             self.coeffs.next().map(|v| v.clone().to_signed())
@@ -356,10 +358,54 @@ impl<'r, I: Iterator<Item = &'r T>, T: 'r + WithSigned<Signed = U> + Clone, U: S
     }
 }
 
+/// An owning iterator of coeffcients in a [ContinuedFraction]
+#[derive(Debug, Clone)]
+pub struct OwnedCoefficients<T> {
+    a_iter: Option<std::vec::IntoIter<T>>, // None if aperiodic part has been consumed
+    p_list: Vec<T>,
+    p_pos: usize,
+    neg: bool
+}
+
+impl<T: WithSigned<Signed = U> + Clone, U: Signed> Iterator for OwnedCoefficients<T> {
+    type Item = U;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // in aperiodic part
+        if let Some(it) = self.a_iter.as_mut() {
+            match it.next() {
+                Some(v) => return Some(if self.neg {
+                    -v.to_signed()
+                } else {
+                    v.to_signed()
+                }),
+                None => {
+                    self.a_iter = None;
+                }
+            }
+        }
+
+        // in periodic part
+        if self.p_list.len() > 0 {
+            let v = self.p_list[self.p_pos].clone();
+            if self.p_pos >= self.p_list.len() {
+                self.p_pos -= self.p_list.len()
+            }
+            Some(if self.neg {
+                -v.to_signed()
+            } else {
+                v.to_signed()
+            })
+        } else {
+            None
+        }
+    }
+}
+
 impl<T> ContinuedFraction<T> {
     /// Returns an iterator of the coefficients in the continued fraction
     /// Note that for a negative number, the coefficients of it's absolute value is returned
-    pub fn coeffs(&self) -> Coefficients<T> {
+    pub fn coeffs_unsigned(&self) -> Coefficients<T> {
         Coefficients {
             a_iter: Some(self.a_coeffs.iter()),
             p_ref: &self.p_coeffs,
@@ -371,19 +417,29 @@ impl<T> ContinuedFraction<T> {
     /// by GeneralContinuedFraction
     pub fn generalized(&self) -> GeneralCoefficients<Coefficients<T>> {
         GeneralCoefficients {
-            coeffs: self.coeffs(),
-            negative: self.negative,
+            coeffs: self.coeffs_unsigned(),
+            neg: self.negative,
         }
     }
 
     /// Returns an iterator of the coefficients in the continued fraction.
     /// The coefficients will be negative if the number is negative
-    pub fn coeffs_signed(&self) -> SignedCoefficients<Coefficients<T>> {
+    pub fn coeffs(&self) -> SignedCoefficients<Coefficients<T>> {
         SignedCoefficients {
-            coeffs: self.coeffs(),
-            negative: self.negative,
+            coeffs: self.coeffs_unsigned(),
+            neg: self.negative,
         }
     }
+
+    pub fn into_coeffs(self) -> OwnedCoefficients<T> {
+        OwnedCoefficients {
+            a_iter: Some(self.a_coeffs.into_iter()),
+            p_list: self.p_coeffs,
+            p_pos: 0,
+            neg: self.negative
+        }
+    }
+
 }
 
 impl<
@@ -395,7 +451,7 @@ impl<
     /// if all coefficients are consumed, or numeric overflow happened.
     pub fn convergents(&self) -> Convergents<T> {
         Convergents {
-            coeffs: self.coeffs(),
+            coeffs: self.coeffs_unsigned(),
             block: Block::identity(),
             neg: self.negative,
         }
@@ -852,11 +908,13 @@ mod tests {
     #[test]
     fn iter_test() {
         let one = ContinuedFraction::<u32>::new(vec![1], vec![], false);
-        assert_eq!(one.coeffs().cloned().collect::<Vec<_>>(), vec![1]);
+        assert_eq!(one.coeffs().collect::<Vec<_>>(), vec![1]);
+        assert_eq!(one.clone().into_coeffs().collect::<Vec<_>>(), vec![1]);
         assert_eq!(one.convergents().collect::<Vec<_>>(), vec![Ratio::from(1)]);
 
         let n_one = ContinuedFraction::<u32>::new(vec![1], vec![], true);
-        assert_eq!(n_one.coeffs().cloned().collect::<Vec<_>>(), vec![1]);
+        assert_eq!(n_one.coeffs().collect::<Vec<_>>(), vec![-1]);
+        assert_eq!(n_one.clone().into_coeffs().collect::<Vec<_>>(), vec![-1]);
         assert_eq!(
             n_one.convergents().collect::<Vec<_>>(),
             vec![Ratio::from(-1)]
@@ -864,7 +922,11 @@ mod tests {
 
         let sq2 = ContinuedFraction::<u32>::new(vec![1], vec![2], false);
         assert_eq!(
-            sq2.coeffs().take(5).cloned().collect::<Vec<_>>(),
+            sq2.coeffs().take(5).collect::<Vec<_>>(),
+            vec![1, 2, 2, 2, 2]
+        );
+        assert_eq!(
+            sq2.clone().into_coeffs().take(5).collect::<Vec<_>>(),
             vec![1, 2, 2, 2, 2]
         );
         assert_eq!(
@@ -880,8 +942,12 @@ mod tests {
 
         let n_sq2 = ContinuedFraction::<u32>::new(vec![1], vec![2], true);
         assert_eq!(
-            n_sq2.coeffs().take(5).cloned().collect::<Vec<_>>(),
-            vec![1, 2, 2, 2, 2]
+            n_sq2.coeffs().take(5).collect::<Vec<_>>(),
+            vec![-1, -2, -2, -2, -2]
+        );
+        assert_eq!(
+            n_sq2.clone().into_coeffs().take(5).collect::<Vec<_>>(),
+            vec![-1, -2, -2, -2, -2]
         );
         assert_eq!(
             n_sq2.convergents().take(5).collect::<Vec<_>>(),

@@ -4,11 +4,12 @@ use super::block::{Block, DualBlock};
 use num_integer::Integer;
 use num_traits::{NumRef, RefNum, One};
 use core::iter as iter;
+use dyn_clone::DynClone;
 
 /// Represents a simple continued fraction with infinite
 /// coefficients. It's a wrapper of an iterator that returns the continued fraction coefficients.
 /// Most operations of this struct will also return an iterator wrapped by this struct.
-pub trait InfiniteContinuedFraction: Iterator {
+pub trait InfiniteContinuedFraction: Iterator + DynClone {
     fn generalize(self) -> iter::Zip<Self, core::iter::Repeat<Self::Item>> where Self: Sized, Self::Item: One + Clone {
         self.zip(iter::repeat(Self::Item::one()))
     }
@@ -54,7 +55,8 @@ pub trait InfiniteContinuedFraction: Iterator {
     }
 }
 
-impl<T: ?Sized> InfiniteContinuedFraction for T where T: Iterator { }
+impl<T: ?Sized> InfiniteContinuedFraction for T where T: Iterator + DynClone { }
+dyn_clone::clone_trait_object!(<T> InfiniteContinuedFraction<Item = T>);
 
 /// Iterator of [InfiniteContinuedFraction::homo()] result
 #[derive(Debug, Clone, Copy)]
@@ -149,8 +151,8 @@ mod tests {
         let sq2 = ContinuedFraction::<u32>::new(vec![1i32], vec![2], false);
         let sq2p1 = sq2.clone() + 1;
         assert_eq!(
-            sq2.coeffs_signed().homo(1, 1, 0, 1).take(5).collect::<Vec<_>>(),
-            sq2p1.coeffs_signed().take(5).collect::<Vec<_>>()
+            sq2.coeffs().homo(1, 1, 0, 1).take(5).collect::<Vec<_>>(),
+            sq2p1.coeffs().take(5).collect::<Vec<_>>()
         );
     }
 }
