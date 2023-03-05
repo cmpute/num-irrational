@@ -337,7 +337,7 @@ impl<
 }
 
 /// Iterator of coefficients in a [ContinuedFraction] with sign applied. This iterator
-/// can be used to construct a [InfiniteContinuedFraction]
+/// is an [InfiniteContinuedFraction][crate::InfiniteContinuedFraction]
 #[derive(Debug, Clone)]
 pub struct SignedCoefficients<T> {
     coeffs: T,

@@ -2,7 +2,7 @@
 //!
 //! All contants will have some of the following methods
 //! - `value()`: The value of the constant represented in the highest precision primitive float (f64)
-//! - `cfrac()`: The value of the constant represented in [InfiniteContinuedFraction]
+//! - `cfrac()`: The value of the constant represented in an interator that could be consumed by [InfiniteContinuedFraction][crate::InfiniteContinuedFraction]
 //! - `gfrac()`: The value of the constant represented in an interator that could be consumed by [GeneralContinuedFraction][crate::GeneralContinuedFraction]
 //!
 //! Note that to use these methods, you have to create a instance of the constant first.
